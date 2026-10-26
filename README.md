@@ -2,7 +2,7 @@
 
 仲間を集め、スキルを選んでCPUとじゃんけんし、固定レシピから新しいスキルを発見する教育用Webアプリです。遊びの記録とキャラクター・スキルの対応表を通じて、データの「1対多」「多対多」のつながりを学ぶ入口を作ります。
 
-**現在は企画・仕様・設計段階です。** 2026年10月26日作成のv1.0文書は実装に着手するための提案仕様であり、`src/` は空です。以下は初版の実装予定で、アプリの実装・試験・公開が完了したことを示すものではありません。
+**①完了、②実環境疎通を進めています。** ①土台作成は完了。②ではSheetsの8表初期化・読込、非公開Driveの検証とWebP登録・取得、Gemini画像生成用アダプターを実装した。専用GASの本人限定試験配置で初期記録の表示と再読込を確認済み。テスト用WebPの実配信を確認済み。Geminiの認証・モデル一覧取得は成功したが画像生成はHTTP 429。提供者から無料プラン／未確認との回答があり、課金・割当の確認待ち。別アカウント拒否は未確認。ゲーム機能・最終受入は未完了。以下の体験は初版の完成時の仕様です。
 
 ## 初版の体験と範囲
 
@@ -61,9 +61,18 @@ Sheetsには `Players`、`Characters`、`Skills`、`CharacterSkills`、`Recipes`
 
 ## 開発の準備
 
-現時点で実行可能なアプリのセットアップ手順はありません。`Makefile` の `setup` / `build` / `run` / `dev` / `test` / `fmt` / `lint` はTODOを表示するひな形です。これらを実行してもアプリの起動や検証は行われません。
+Node.js 22以上を用意し、プロジェクトルートで実行します。
 
-実装時は次の順で準備・開発します。[開発手順](docs/04_workflows.md)、[API契約](docs/02_architecture.md)、[初期データ・保存](docs/05_data_model.md)、[配置・復旧](docs/08_release_runbook.md)を参照してください。未着手作業は[MVP実装バックログ](docs/tasks/02_backlog/mvp-implementation.md)で追跡します。
+```powershell
+npm ci
+npx playwright install chromium
+npm run check
+npm run preview
+```
+
+Chromiumが導入済みならインストールは不要です。プレビューは `http://127.0.0.1:4173/` の仮データ表示で、Ctrl+Cで終了します。`npm run check` は整形確認・26件のローカルテスト・ビルド・ブラウザ確認を行います。`npm run build` の出力はdistで、アップロードやデプロイはしません。Makefileはnpmのラッパーです。
+
+次は②実サービス疎通→③保存・再送等の土台拡張→ゲーム実装・最終受入の順で進めます。[開発手順](docs/04_workflows.md)、[API契約](docs/02_architecture.md)、[初期データ・保存](docs/05_data_model.md)、[配置・復旧](docs/08_release_runbook.md)を参照してください。進捗は[MVP親タスク](docs/tasks/02_backlog/mvp-implementation.md)で追跡します。
 
 1. 提供者のGoogleアカウントで、GAS・Sheets・非公開Driveフォルダーと画像生成環境を準備する。
 2. GASのScript PropertiesにSpreadsheet ID、DriveフォルダーID、Gemini APIキー、画像モデルIDを設定する。キーをHTML・Sheets・ブラウザ保存領域・ログに置かない。
@@ -91,7 +100,7 @@ Sheetsには `Players`、`Characters`、`Skills`、`CharacterSkills`、`Recipes`
 - 学習画面が実データと一致し、提供者以外のアカウント・未ログインではアクセスできない。
 - 360px幅で横にはみ出さず、44px以上の主ボタン、原則16px以上の本文、読み上げ・キーボード・動きを減らす設定に対応する。
 
-試験結果は現在すべて未実施です。代替画像だけで動く場合は「機能試作」とし、Gemini画像・WebPなどの未達条件を残したまま完成扱いにしません。
+基盤①のローカルテストと360px幅のブラウザ確認は成功しました。[検証記録](docs/07_test_strategy.md)に実施範囲を記載しています。実環境疎通とAC01〜AC23は未実施です。代替画像だけで動く場合は「機能試作」とし、Gemini画像・WebPなどの未達条件を残したまま完成扱いにしません。
 
 ## ディレクトリとドキュメント
 
@@ -101,8 +110,12 @@ Sheetsには `Players`、`Characters`、`Skills`、`CharacterSkills`、`Recipes`
 ├── AGENTS.md          # AIエージェント共通の作業ガイド
 ├── CLAUDE.md          # Claude Codeの参照先・作業手順
 ├── SPEC.md            # 1機能の実装スペック用ひな形
-├── Makefile           # 開発コマンドのひな形（未整備）
-├── src/               # アプリケーション実装先（現在は空）
+├── Makefile           # npmコマンドのラッパー
+├── package.json       # ローカル検証・ビルド・プレビュー
+├── src/               # GASサーバー・最小HTML画面
+├── scripts/           # ビルド・ローカルプレビュー
+├── tests/             # GASモック・API・画面・ブラウザ検証
+├── dist/              # GAS向け出力（Git対象外）
 ├── env/               # 開発用設定のひな形
 ├── docs/
 │   ├── archive/       # 初期資料の退避先（現行仕様ではない）

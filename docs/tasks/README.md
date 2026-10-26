@@ -63,17 +63,33 @@
 
 ## スキルじゃんけんラボの実装バックログ
 
-企画・仕様・設計v1.0は[製品文書の索引](../00_index.md)から参照する。現在は設計段階で、アプリ実装・受入試験は未実施。
+企画・仕様・設計v1.0は[製品文書の索引](../00_index.md)から参照する。①完了。②の専用GAS・Sheets初期化と初期画面表示を実測済み。画像実疎通・ゲーム実装・最終受入は未完了。
 
 | ファイル | 用途 |
 |---|---|
-| [02_backlog/mvp-implementation.md](02_backlog/mvp-implementation.md) | 未着手のMVP実装順・検証範囲。実装開始時に具体化する |
+| [02_backlog/mvp-implementation.md](02_backlog/mvp-implementation.md) | MVP全体の親タスク。基盤3段階の進行と、後続のゲーム実装・最終受入 |
+| [③ 土台拡張](02_backlog/foundation-03-hardening.md) | ②完了後。Actions保存・再送・画像管理・復元の基盤を整備 |
+
+## アイディア
+
+| ファイル | 用途 |
+|---|---|
+| [既存GASアプリの比較と写真日記基盤の流用構想](01_idea/既存GASアプリの比較と写真日記基盤の流用構想.md) | 写真日記・英語トレーナーの比較、コピー候補、改修点、移植順序案 |
 
 ## Active
 
 | ファイル | 用途 |
 |---|---|
+| [② GAS・Sheets・Drive・Gemini連携疎通](03_active/foundation-02-integration.md) | 実装・実疎通を進行中。Drive配信済み、Gemini画像生成HTTP 429で課金・割当の確認待ち |
 | [03_active/refactoring-candidates.md](03_active/refactoring-candidates.md) | 残りのクリーンアップ候補 |
+
+基盤は①→②→③の順に実行し、同時に進める実装タスクは1件とする。①は2026-10-26に完了。②は初期記録まで実疎通済み、全経路確認は未完了。
+
+## 完了
+
+| ファイル | 確認結果 |
+|---|---|
+| [① 土台作成](05_done/foundation-01-scaffold.md) | ローカル16テスト・13実行ファイルのビルド・360px幅Chromium確認に成功 |
 
 ## ルール
 
@@ -99,4 +115,4 @@
 ## Notes
 ```
 
-製品実装の次の作業は[02_backlog/mvp-implementation.md](02_backlog/mvp-implementation.md)、既存のクリーンアップ候補は[03_active/refactoring-candidates.md](03_active/refactoring-candidates.md)で管理する。
+進行中の実装作業は[② 連携疎通](03_active/foundation-02-integration.md)、全体計画は[MVP親タスク](02_backlog/mvp-implementation.md)、既存のクリーンアップ候補は[03_active/refactoring-candidates.md](03_active/refactoring-candidates.md)で管理する。

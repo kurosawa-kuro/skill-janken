@@ -1,0 +1,92 @@
+<script>
+  (() => {
+    const { $, el } = App.dom;
+    let busy = false;
+    async function showCompanion(character) {
+      const container = $("companion");
+      container.replaceChildren();
+      container.hidden = !character;
+      if (!character) return;
+      const fallback = el("p", "record", character.name);
+      container.append(fallback);
+      try {
+        const { data } = await App.api.call({
+          op: "getAsset",
+          payload: { assetId: character.assetId },
+        });
+        if (
+          data.assetId !== character.assetId ||
+          data.mimeType !== "image/webp" ||
+          typeof data.base64 !== "string" ||
+          data.base64.length > 136536 ||
+          !/^[A-Za-z0-9+/]+={0,2}$/.test(data.base64)
+        )
+          return;
+        const img = document.createElement("img");
+        img.alt = character.name;
+        img.className = "companion-image";
+        img.hidden = true;
+        img.onload = () => {
+          img.hidden = false;
+          fallback.hidden = true;
+        };
+        img.onerror = () => {
+          img.remove();
+          fallback.hidden = false;
+        };
+        container.append(img);
+        img.src = `data:image/webp;base64,${data.base64}`;
+      } catch (_) {
+        // The name stays visible; image availability never hides the record.
+      }
+    }
+    async function load() {
+      if (busy) return;
+      busy = true;
+      $("panel").setAttribute("aria-busy", "true");
+      $("status").textContent = "きろくをよんでいるよ…";
+      $("summary").hidden = true;
+      $("summary").replaceChildren();
+      $("companion").hidden = true;
+      $("companion").replaceChildren();
+      $("retry").hidden = true;
+      $("retry").disabled = true;
+      try {
+        const response = await App.api.bootstrap();
+        const { player, state } = response.data;
+        if (
+          !player ||
+          typeof player.displayName !== "string" ||
+          !state ||
+          !Number.isSafeInteger(state.points) ||
+          state.points < 0 ||
+          !Number.isSafeInteger(response.version) ||
+          response.version !== state.version
+        )
+          throw new Error("Invalid state");
+        $("status").textContent = "きろくをよめたよ";
+        $("summary").append(
+          el("p", "record", player.displayName),
+          el("p", "record", `たんきゅうポイント ${state.points}`),
+        );
+        $("summary").hidden = false;
+        const character = response.data.characters?.find((item) =>
+          state.ownedCharacterIds?.includes(item.characterId),
+        );
+        void showCompanion(character);
+      } catch (error) {
+        $("status").textContent =
+          error.kind === "business" && error.code === "DATA_INTEGRITY_ERROR"
+            ? "きろくをかくにんしています。大人をよんでね"
+            : "きろくをよめなかったよ。大人といっしょに、もういちどためしてね。";
+        $("retry").hidden = false;
+      } finally {
+        busy = false;
+        $("retry").disabled = false;
+        $("panel").setAttribute("aria-busy", "false");
+      }
+    }
+    $("retry").addEventListener("click", load);
+    load();
+  })();
+</script>

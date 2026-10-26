@@ -6,9 +6,45 @@
 
 ## 現在の開発環境
 
-`src/` は空で、依存定義・テストランナー・GASへの配置手順は未整備。`Makefile` のsetup / build / run / dev / test / fmt / lintはTODOを表示するひな形で、helpターゲットはない。現時点でこれらを起動・検証コマンドとして案内しない。終了コード0をアプリ検証の成功とみなさない。
+2026-10-26、①土台作成は完了。②ではSheetsの8表初期化・読込、非公開Driveの検証とWebP登録・取得、Gemini画像生成用アダプターを実装した。専用GASの本人限定試験配置で初期記録の表示と再読込を確認済み。テスト用WebPの実配信を確認済み。Geminiの認証・モデル一覧取得は成功したが画像生成はHTTP 429。提供者から無料プラン／未確認との回答があり、課金・割当の確認待ち。別アカウント拒否は未確認。ゲーム機能・最終受入は未完了。今回の実装開始時にはGit管理情報が存在し、既存のタスク文書の未コミット変更を保持して作業した。
 
-2026年10月26日の確認時、この作業フォルダーにGit管理情報はなかった。Git導入後は差分・状態をGitで確認し、それまでは変更前後のファイル比較で変更範囲を確認する。GASへの配置方式を決める際に、必要なツール・実コマンド・環境をこの文書へ追記する。
+Node.js 22以上を用意し、プロジェクトルートで実行する。検証環境はWindows・Node.js v24.21.0・npm 11.19.0。依存バージョンはpackage-lock.jsonで固定する。
+
+```powershell
+npm ci
+npx playwright install chromium
+npm run check
+```
+
+Chromiumが既に導入済みならブラウザのインストールは不要。初回ダウンロードを含む環境準備と、外部サービスへの接続は別である。
+
+| コマンド | 実行内容 |
+|---|---|
+| npm test | Nodeの26テスト。GASモック・API・画面通信・構造 |
+| npm run build | srcの19実行ファイルと.claspignoreをdistへ出力。転送・デプロイしない |
+| npm run test:browser | build後にChromiumで360px幅・読込・通信失敗・キーボード再試行を確認 |
+| npm run check | format:check → test → build → test:browser |
+| npm run preview | 127.0.0.1:4173で仮データの最小画面を表示。Ctrl+Cで終了 |
+| npm run format / format:check | アプリ・開発スクリプト・試験コードの整形／確認 |
+
+Makefileは上記npmコマンドのラッパーへ更新した。Windowsではnpmを直接使える。run/devはモックプレビューであり、GASそのもののローカル実行やホットリロードではない。
+
+プレビューのテストデータ・通信ブリッジはscripts/tests内にのみ置き、配布物に含めない。画面上にもローカルプレビューであることを表示する。GAS向けの実コードは設定不足・未接続時に成功を返さない。
+
+ブラウザのスクリーンショットと結果は `artifacts/scaffold-mobile.png`、`artifacts/scaffold-retry.png`、`artifacts/scaffold-browser-result.json` に出力する（Git対象外）。秘密情報や実データは使用しない。
+
+### ②の接続設定
+
+専用GAS・Sheets・Driveを作成し、.clasp.jsonは今回のGASとdistを指す（Git対象外）。JANKEN_の2設定は保存済み。Geminiのキーは提供者が設定し、モデル名も保存済み。外部通信を追加認可してモデル一覧取得に成功したが、画像生成はHTTP 429。[②のタスク](tasks/03_active/foundation-02-integration.md)に接続先と実測を記録する。claspは3.4.1で固定した。
+
+| Script Property | 用途 |
+|---|---|
+| JANKEN_SPREADSHEET_ID | 今回専用の8表を置くブック |
+| JANKEN_DRIVE_FOLDER_ID | 今回専用の非公開画像フォルダー |
+| GEMINI_API_KEY | 提供者の画像制作時だけ使うキー |
+| GEMINI_IMAGE_MODEL | 実装日に確認した画像生成対応モデル |
+
+`inspectConfiguration_()` は名前と設定有無だけを返す内部診断。値は返さず、設定の書換えもしない。外部アダプターは実装済み。設定の存在だけでは疎通成功とせず、実データで確認する。元アプリのScript ID・Deployment ID・接続設定をコピーしない。
 
 ## 実装開始前の準備
 
@@ -48,7 +84,7 @@
 ### 初版の制作工程
 
 1. 提供者がキャラ3件・スキル4件の固定プロンプトを用意する。
-2. GASエディタから管理関数 `generateAsset_(assetId)` を実行する。Script PropertiesのキーとモデルIDを使い、Gemini APIを呼び出す。
+2. [一時実行手順](08_release_runbook.md#管理関数の一時実行)で管理関数 `generateAsset_(assetId)` を実行する（末尾 `_` の関数はエディタの実行候補にも出ない）。Script PropertiesのキーとモデルIDを使い、Gemini APIを呼び出す。
 3. 応答の画像パートを探す。画像がない、拒否された、429/5xxになった場合は失敗として記録し、READYにしない。
 4. 返されたMIMEタイプを確認し、元画像を非公開のDriveフォルダーへ保存する。拡張子だけをWebPに変えない。
 5. 提供者が元画像を取得し、手元の画像編集ソフト、またはローカルのCanvas変換ページで512×512以下のWebPへ変換する。
@@ -57,7 +93,9 @@
 
 画像生成対応モデルは実装日に利用可能なものを選び、`GEMINI_IMAGE_MODEL` に設定する。APIから画像データを取得する方式は[Geminiの画像生成公式資料](https://ai.google.dev/gemini-api/docs/image-generation)を確認する。アプリのゲーム仕様は特定モデルに依存させない。
 
-管理関数は `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` を呼ぶ方式を想定し、モデルに合わせた画像出力設定を使う。キーは `x-goog-api-key` ヘッダーに入れ、URLやログに含めない。モデルごとの対応フィールドは公式資料の実装時点の例に合わせる。
+2026-10-26の疎通用候補は `gemini-3.1-flash-lite-image`。既存アプリのgenerateContent方式を再利用し、[同APIの画像生成公式例](https://ai.google.dev/gemini-api/docs/generate-content/image-generation)で画像パートの取得方式を確認した。[公式料金](https://ai.google.dev/gemini-api/docs/pricing)では通常1K画像の出力が1枚0.0336米ドル、入力・テキスト出力は別料金、API無料枠なし。これは利用料金の保証や実際の請求額ではない。キーの利用可能モデル・割当は未確認で、実生成前に設定する。旧2.5 Flash Imageは同資料で終了予定日が過ぎているため採用しない。
+
+管理関数は `https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent` を呼ぶ方式を実装し、モデルに合わせた画像出力設定を使う。キーは `x-goog-api-key` ヘッダーに入れ、URLやログに含めない。モデルごとの対応フィールドは公式資料の実装時点の例に合わせる。
 
 自動WebP変換までGASだけで完結させることは初日の必須範囲にしない。必要なら提供者用ローカルページで `canvas.toBlob(..., 'image/webp', 0.82)` を使い、返されたBlobのMIMEタイプを確認する。WebP非対応時は別の変換手段を使う。
 

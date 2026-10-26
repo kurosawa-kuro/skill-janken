@@ -1,39 +1,25 @@
-.PHONY: setup build run dev test fmt lint clean
+.PHONY: setup deps build run dev test fmt lint check
 
-# Application
-APP_NAME := <your-project>
-
-# 初期セットアップ (依存取得・ビルド)
+# npm is the canonical interface; make is an optional convenience wrapper.
 setup: deps build
-	@echo "Setup complete."
 
 deps:
-	@echo "TODO: 依存をインストール (例: npm install / cargo fetch / pip install -r requirements.txt)"
+	npm ci
 
-# ビルド
 build:
-	@echo "TODO: ビルドコマンドを記述"
+	npm run build
 
-# 実行
-run:
-	@echo "TODO: 実行コマンドを記述"
+run dev:
+	npm run preview
 
-# 開発 (ホットリロード)
-dev:
-	@echo "TODO: 開発サーバー / watch コマンドを記述"
-
-# テスト
 test:
-	@echo "TODO: テストコマンドを記述"
+	npm test
 
-# 整形
 fmt:
-	@echo "TODO: フォーマッタを記述"
+	npm run format
 
-# 静的解析
 lint:
-	@echo "TODO: リンタを記述"
+	npm run format:check
 
-# クリーンアップ
-clean:
-	@echo "TODO: 成果物削除コマンドを記述"
+check:
+	npm run check

@@ -82,3 +82,8 @@ terraform.tfstate.*
 *.sqlite3
 *.sqlite3-*
 uploads/
+
+# GAS connection and credentials (configured per environment)
+.clasp.json
+.clasprc.json
+.clasprc.*.json

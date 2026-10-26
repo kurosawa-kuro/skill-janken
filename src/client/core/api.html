@@ -1,0 +1,39 @@
+<script>
+  // Adapted from ai-photo-diary: one RPC, full response, no automatic retry.
+  App.api = (() => {
+    const transportError = () => ({
+      kind: "transport",
+      code: "NETWORK_ERROR",
+      message: "つうしんをかくにんして、もういちど",
+      retryable: true,
+    });
+    function call(request) {
+      return new Promise((resolve, reject) => {
+        if (!window.google || !google.script || !google.script.run) {
+          reject(transportError());
+          return;
+        }
+        google.script.run
+          .withSuccessHandler((response) => {
+            if (
+              response &&
+              response.ok === true &&
+              response.data &&
+              typeof response.replayed === "boolean"
+            )
+              resolve(response);
+            else if (response && response.ok === false && response.error)
+              reject({
+                ...response.error,
+                kind: "business",
+                requestId: response.requestId,
+              });
+            else reject(transportError());
+          })
+          .withFailureHandler(() => reject(transportError()))
+          .api(request);
+      });
+    }
+    return { call, bootstrap: () => call({ op: "bootstrap", payload: {} }) };
+  })();
+</script>

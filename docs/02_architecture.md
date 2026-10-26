@@ -35,21 +35,25 @@ flowchart LR
 
 ## 実装ファイルの責務
 
-| ファイル案 | 責務 |
+| 実ファイル／後続の責務 | 責務 |
 |---|---|
-| Code.gs | doGet、公開関数api、操作名の許可リスト |
-| GameService.gs | 抽選・対戦・合成・状態変更の制御 |
-| Rules.gs | 勝敗、ポイント、レシピ正規化の副作用のない関数 |
-| Repository.gs | Sheets一括読込、行動追記、整合性検証 |
-| Assets.gs | 許可画像IDから採用WebPを取得 |
-| Admin.gs | 初期データ作成、マスター検証、画像生成・登録、バックアップ補助 |
-| Index.html | 5画面の骨組み |
-| Styles.html | スマホ優先のCSS |
-| Client.html | RPC、画面状態、結果モーダル、再送処理 |
+| src/server/controllers/web.js・api.js | doGet/include_、公開api、共通応答。実装済み |
+| src/server/core/request.js・errors.js・settings.js | 6操作の入力検証、安全なエラー、Script Properties読込。実装済み |
+| src/server/application/services.js | 読取りサービスへの配線。GameServiceの抽選・対戦・合成は後続実装 |
+| Rules（後続） | 勝敗、ポイント、レシピ正規化の副作用のない関数 |
+| src/server/adapters/external.js | Repository・Assets・Geminiの実アダプターへの配線。設定不足時はエラーで停止 |
+| src/server/controllers/admin.js・core/lock.js | 新規8表作成、排他、WebP登録。設定済みブックを上書きしない。バックアップは後続 |
+| src/server/db/schema.js・repository.js | 型・ヘッダー・初期マスターを検証し公開項目だけ返す。Actionsが0件の初期状態のみ対応 |
+| src/server/services/assets.js・gemini.js | 非公開所有確認、WebP寸法・容量検証、画像パート抽出、生成元のDRAFT保存 |
+| src/client/index.html・styles.html | 読込・初期記録・失敗・再試行の最小画面。5画面は後続 |
+| src/client/core/dom.html・api.html・app.html | DOM、安全な文字表示、全応答を保持するRPC、初期読込と所有仲間1枚の画像取得・失敗時の名前表示。変更の保留要求・結果演出は後続 |
+| scripts/・tests/ | ローカルビルド・プレビュー・GASモック・ブラウザ検証。GAS配置には含めない |
 
 内部・管理関数は末尾 `_` を付け、画面から呼ぶ公開関数は `api` に集約する。末尾 `_` の関数は `google.script.run` から呼び出せない。ただし、これは公開範囲の設定や入力検証の代替ではない。[公式通信ガイド](https://developers.google.com/apps-script/guides/html/communication)。
 
-上記は `src/` 配下に作るファイル案で、現在は未作成。GASプロジェクトへの配置方式・ローカル検証環境は実装タスクで整備する。
+2026-10-26、①土台作成として上記の最小構成を実装した。コピー元に合わせてGASサーバーを通常のJavaScriptファイルに分割し、GAS上では同じ大域で実行する。Node側のscripts/testsはES modulesを使用する。トップレベルで別ファイルの初期化順に依存しない。
+
+`npm run build` は明示的な許可リストにある13実行ファイルと.claspignoreだけをdistへ出力する。配置先・認可・claspによる転送は②で設定し、現時点ではアップロードしない。実サービスが未接続の配布物は初期状態を偽装せずエラーになり、ローカルプレビューだけがtestsの仮データを利用する。
 
 ## Golden Pathと構成要素
 
@@ -166,6 +170,8 @@ bootstrapのplayerは `{playerId, displayName}`。charactersは `{characterId,na
 recentActionsは `{actionId,type,createdAt,result}` の配列で新しい順。payloadHashや入力の内部記録は返さない。getRelationsのversionは対応する状態のversion。画像ファイルが変わる場合はAssets.versionを増やす。
 
 playerIdはクライアントから受け取らず、初版サーバー内でP001と決める。未知のop、未知のキー、必要項目不足を拒否する。変更要求全体は4KB以下、IDは英数字・`_`・`-`の32文字以内、requestIdはUUID形式に限定する。
+
+①土台作成時点の共通入口では、読取り要求を `{op,payload}`、変更要求を `{op,requestId,expectedVersion,payload}` として検証する。requestIdはUUIDの版1〜8・標準variant、expectedVersionは0以上の安全な整数。要求サイズはJSON.stringify後のUTF-8バイト数で4096以下とする。6操作の入力形式は実装済みだが、実データ読込・ゲーム処理の合格を意味しない。
 
 ## 保存・実行境界
 

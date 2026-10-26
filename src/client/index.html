@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <base target="_top" />
+    <meta charset="utf-8" />
+    <?!= include_("client/styles") ?>
+  </head>
+  <body>
+    <main aria-labelledby="title">
+      <p class="eyebrow">あつめる・ためす・つながる</p>
+      <h1 id="title">スキルじゃんけんラボ</h1>
+      <p class="intro">なかまとスキルの、たんけんをはじめよう。</p>
+      <section
+        class="panel"
+        aria-label="たんけんのきろく"
+        aria-busy="true"
+        id="panel"
+      >
+        <p id="status" role="status" aria-live="polite">
+          きろくをよんでいるよ…
+        </p>
+        <div id="summary" hidden></div>
+        <div id="companion" hidden></div>
+        <button type="button" id="retry" hidden>もういちどよむ</button>
+      </section>
+    </main>
+    <script>
+      window.CONFIG = <?!= serializeForScript_(config) ?>;
+    </script>
+    <?!= include_("client/core/dom") ?> <?!= include_("client/core/api") ?> <?!=
+    include_("client/app") ?>
+  </body>
+</html>

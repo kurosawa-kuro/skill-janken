@@ -1,0 +1,13 @@
+<script>
+  // Copied from ai-photo-diary/core/dom.html; unused view registry removed.
+  window.App = window.App || {};
+  App.dom = {
+    $: (id) => document.getElementById(id),
+    el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text != null) node.textContent = text;
+      return node;
+    },
+  };
+</script>

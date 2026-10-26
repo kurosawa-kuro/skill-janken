@@ -31,6 +31,10 @@
 
 内部例外やGoogleのエラー本文、APIキー、DriveのファイルIDは子ども向け画面に表示しない。
 
+①土台作成ではINVALID_ARGUMENT・ASSET_UNAVAILABLE・DATA_INTEGRITY_ERROR・INTERNAL_ERRORの共通応答と、クライアント側の業務／通信失敗の区別を実装した。設定不足・未実装処理はINTERNAL_ERROR（retryable=false）等で停止し、仮データの成功に置き換えない。②では実読取・非公開画像・生成アダプターとBUSYを追加した。設定不足は設定後に手動再試行する。Actionsが存在するデータは現段階ではDATA_INTEGRITY_ERRORとし、初期状態へ戻さない。その他のゲーム固有エラー・変更要求の保留と再送は後続実装。
+
+不明な例外は定型のINTERNAL_ERRORへ変換する。元の例外本文・スタックをレスポンスやアプリログへ出さない。クライアント側のNETWORK_ERRORは通信失敗を識別するローカルコードであり、新しいサーバー業務コードではない。
+
 ## 再送・競合・不整合の扱い
 
 1. 変更要求を送信する前にUUID形式のrequestIdを採番し、op・payload・expectedVersionを含む要求全体をsessionStorageに保持する。通信中はすべての変更操作を無効にする。
