@@ -18,14 +18,11 @@
 | CHARACTER_NOT_OWNED | そのなかまはまだいないよ | 変更なし |
 | SKILL_NOT_AVAILABLE | このスキルはまだつかえないよ | 変更なし |
 | ALL_OWNED | みんなそろったよ | 変更なし |
-| RECIPE_NOT_FOUND | このくみあわせはまだないよ | 変更なし |
-| INSUFFICIENT_POINTS | あと○ポイントためよう | 変更なし。不足値を表示 |
-| ALREADY_UNLOCKED | もうおぼえているよ | 変更なし |
 | VERSION_CONFLICT | きろくがかわったよ。よみなおそう | 最新状態取得。自動で新規操作しない |
 | REQUEST_ID_CONFLICT | つうしんをかくにんしてね | 同じIDで異なる内容。大人に案内 |
 | BUSY | ちょっとまって、もういちど | 同じ要求を再送可能 |
 | OP_LIMIT | きょうのデモはここまで。大人をよんでね | 200件上限。提供者が保存・初期化 |
-| ASSET_UNAVAILABLE | えのよみこみにしっぱいしたよ | 代替表示。遊びは継続 |
+| LEGACY_DATA_READ_ONLY | このきろくは大人といっしょにかくにんしてね | 旧マスター版の新ゲーム書込を停止。自動移行・初期化なし |
 | DATA_INTEGRITY_ERROR | きろくをかくにんしています。大人をよんでね | 変更を停止。自動初期化しない |
 | INTERNAL_ERROR / 通信失敗 | つうしんをかくにんして、もういちど | 結果未確定。同じIDで再送 |
 
@@ -48,11 +45,14 @@
 
 保存処理の厳密な順序と不完全行検出は[データモデル](05_data_model.md)、調査・復元・200件到達時の初期化は[リリース手順](08_release_runbook.md)を参照する。
 
+合成関連の業務エラーは現行ゲームから除外する。旧synthesizeはINVALID_ARGUMENT、S04の対戦要求はSKILL_NOT_AVAILABLEで拒否し状態を変更しない。旧ブックや旧保留要求は[データモデル](05_data_model.md)に従って管理者が照合する。
+
 ## AIセリフの失敗
 
-AIの未設定・無効・無料枠超過・429・5xx・拒否・形式不正・表示待ち3秒超過は定型文へ切り替える。既に保存した対戦結果を失敗に変えず、ポイントを二重適用しない。子ども向け画面に課金やAPIエラーの解消を要求しない。
+プレイ中にAIを呼ばない。管理画面での未設定・429・5xx・拒否・遅延・応答喪失は管理処理だけの失敗とし、採用済み集を維持する。生成失敗で対戦結果やActionsを変更しない。429・認証・モデル利用不可では当日の管理生成を停止し、自動再試行しない。
 
-getBattleLineは未知ROUNDや改ざん入力をINVALID_ARGUMENTで拒否し、ゲーム記録破損はDATA_INTEGRITY_ERRORとする。AIサービスの失敗はsource=presetの応答とし、内部診断はキーや生の応答を出さない。429・認証・モデル利用不可では当日停止し、自動再試行しない。詳細は[再設計](specs/ai-battle-dialogue.md)。画像用ASSET_UNAVAILABLEと画像管理経路は撤去対象。
+採用集の未作成・破損・読込失敗は定型文で継続し、追加取得や自動生成はしない。Actionsの破損は従来どおりDATA_INTEGRITY_ERRORで停止する。管理者の未認証・不一致は管理操作を拒否し、下書きや秘密情報を返さない。旧getBattleLine案とASSET_UNAVAILABLEの画像経路は廃止する。[現行設計](specs/ai-battle-dialogue.md)を参照。
+
 ## ログと表示
 
 - Apps Scriptの実行失敗、Actions件数、制作時の利用量を提供者が確認する。障害調査ではrequestIdと直前状態を照合する。

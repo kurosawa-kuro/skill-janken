@@ -8,10 +8,10 @@
 
 | 技術 | 初版での役割 |
 |---|---|
-| Google Apps Script（GAS） | 画面配信、入力検証、勝敗・ポイント計算、保存、対戦後のセリフ取得 |
-| Google Sheets | キャラ・スキル・対応表・レシピ・行動記録の保存と教材用の可視化 |
+| Google Apps Script（GAS） | 画面配信、入力検証、勝敗・ポイント計算、保存、起動時の採用済みセリフ集取得 |
+| Google Sheets | キャラ・スキル・対応表・行動記録の保存と教材用の可視化 |
 | Google Drive | Sheetsの非公開確認とバックアップ。画像用途は廃止 |
-| Gemini | 保存済み対戦の短いセリフ。画像生成・勝敗の決定には使わない |
+| Gemini | 管理画面での事前生成のみ。プレイ中の生成・画像生成・勝敗の決定には使わない |
 | HTML/CSS/JavaScript | 縦画面、カード、ボタン、短い演出、学習表示 |
 
 テキスト用モデルの無料枠・利用可能性を実装時に確認する。画像生成とWebP制作・配信は廃止。公式資料の出典と確認範囲は[文書索引](00_index.md)に記載する。
@@ -20,19 +20,21 @@
 
 ```mermaid
 flowchart LR
-    B[画像なしのカード画面] -->|google.script.run| G[GAS api]
-    G -->|対戦を先に保存| S[Sheets マスターとActions]
-    G -->|結果表示後 getBattleLine| T[AIセリフサービス]
-    T -->|保存済みROUNDを参照| S
-    T -->|ゲーム保存ロックの外| M[Gemini テキスト]
-    T --> P[予約・回数・セリフ管理]
-    M -->|テキスト応答| T
-    T -->|検証済み短文 または定型文| B
+    A[提供者の管理画面] -->|本人認可| M[GAS adminApi]
+    M -->|事前生成のみ| AI[Gemini テキスト]
+    AI --> M
+    M -->|下書き・確認・公開| D[セリフ管理表]
+    B[ゲーム画面] -->|bootstrap 一括取得| G[GAS api]
+    G --> S[ゲーム8表・Actions]
+    D -->|採用済み集だけ| G
+    B -->|playRound 保存| G
+    G -->|確定結果| B
+    B --> L[読込済み文をローカル表示]
 ```
 
 画面はGASの `doGet()` が返すHTML Service。画面からサーバーへの通信は非同期の `google.script.run` を使う。[Webアプリの公式説明](https://developers.google.com/apps-script/guides/web)、[HTML Serviceの通信](https://developers.google.com/apps-script/guides/html/communication)。
 
-初版は同じGAS内の画面とサーバーを使い、独立したRESTサーバーや別ホスティングを用意しない。画像生成は廃止。AIセリフはゲーム変更の保存完了後に別RPCで取得する。
+初版は同じGAS内の画面とサーバーを使い、独立したRESTサーバーや別ホスティングを用意しない。画像生成は廃止。AIセリフは管理画面で事前生成・採用する。ゲームはbootstrapに同梱された集から選ぶ。対戦ごとのセリフ通信や生成は行わない。
 
 ## 実装ファイルの責務
 
@@ -42,13 +44,13 @@ flowchart LR
 |---|---|
 | src/server/controllers/web.js・api.js | doGet/include_、公開api、共通応答。実装済み |
 | src/server/core/request.js・errors.js・settings.js | 6操作の入力検証、安全なエラー、Script Properties読込。実装済み |
-| src/server/application/services.js | 読取りサービスへの配線。GameServiceの抽選・対戦・合成は後続実装 |
-| Rules（後続） | 勝敗、ポイント、レシピ正規化の副作用のない関数 |
+| src/server/application/services.js | 読取りサービスへの配線。GameServiceの抽選・対戦は後続実装。旧合成の枠は撤去対象 |
+| Rules（後続） | 勝敗、得点、抽選の副作用のない関数 |
 | src/server/adapters/external.js | Repository・Assets・Geminiの実アダプターへの配線。設定不足時はエラーで停止 |
 | src/server/controllers/admin.js・core/lock.js | 新規8表作成、排他、WebP登録。設定済みブックを上書きしない。controllers/backup.jsは別ブックへの検証付きコピー・復元 |
 | src/server/db/schema.js・repository.js | 型・ヘッダー・初期マスターを検証し公開項目だけ返す。全Actionsを検証し最新stateを復元。db/actions.jsでロック内の追記・再送・上限判定を実装 |
 | src/server/services/assets.js・gemini.js | 非公開所有確認、WebP寸法・容量検証、画像パート抽出、生成元のDRAFT保存 |
-| src/client/index.html・styles.html | 読込・初期記録・失敗・再試行の最小画面。5画面は後続 |
+| src/client/index.html・styles.html | 読込・初期記録・失敗・再試行の最小画面。4画面は後続 |
 | src/client/core/dom.html・api.html・app.html | DOM、安全な文字表示、全応答を保持するRPC、初期読込と所有仲間1枚の画像取得・失敗時の名前表示。core/pending.htmlは送信前保存・手動再送・最新化、core/assets.htmlは版別メモリキャッシュ。ゲームの結果演出は後続 |
 | scripts/・tests/ | ローカルビルド・プレビュー・GASモック・ブラウザ検証。GAS配置には含めない |
 
@@ -67,10 +69,8 @@ flowchart LR
 | 1 | 起動 | Code / Client / Repository、bootstrap | Googleアクセス制御、Sheetsマスター・Players・Actions | 権限不足・不整合で起動または変更を停止 |
 | 2 | 仲間獲得 | GameService / Rules / Repository、drawCharacter | ScriptLock、Actionsの所有スナップショット | 保存できなければ演出しない |
 | 3 | 対戦・ポイント獲得 | GameService / Rules / Repository、playRound | 所有・習得・適性・手の検証、Actions | 結果未確定なら同一要求の再送で解決 |
-| 4 | 合成 | GameService / Rules / Repository、synthesize | Recipes、Actionsのポイント・習得 | 二重消費・二重解放を防止 |
-| 5 | S04使用 | Client / GameService / Rules、playRound | CharacterSkillsの既存適性、習得状態 | 適性と習得の混同を防止 |
-| 6 | 学習表示 | Client / Repository、getRelations | Players→Actions、Characters↔CharacterSkills↔Skills | 実データに一致しなければ学習要件未達 |
-| 7 | 再開 | Client / Repository、保留要求解決→bootstrap | sessionStorageとSheets最新状態 | 過去の再送結果で画面を巻き戻さない |
+| 4 | 学習表示 | Client / Repository、getRelations | Players→Actions、3体×3種・適性6行 | 実データと一致しなければ未達 |
+| 5 | 再開 | Client / Repository、保留要求解決→bootstrap | sessionStorageとSheets最新状態 | 再送結果で最新画面を巻き戻さない |
 
 画像配信getAssetは撤去対象。新仕様は画像ファイルを必要とせず、GAS・Sheets・認証がゲームの中核依存となる。テキストAIは演出に使い、生成失敗が保存や次の操作を妨げない。
 
@@ -83,9 +83,7 @@ flowchart LR
 | bootstrap | マスター・最新状態取得 | なし |
 | drawCharacter | 未所有仲間を1体獲得 | 所有追加 |
 | playRound | 1回のじゃんけん | ポイント加算 |
-| synthesize | 固定レシピで習得 | ポイント消費・習得追加 |
 | getRelations | 学習用の関係と最新記録取得 | なし |
-| getBattleLine | 保存済み対戦に対するセリフ | ゲーム状態なし。生成予約・日次回数・セリフ保存のみ |
 
 変更要求には一意の `requestId` と画面が読んだ `expectedVersion` を付ける。同じ要求を再送すると保存済みの結果を返し、二重に適用しない。別の操作で状態が進んでいたら更新競合として再読込を案内する。
 
@@ -147,28 +145,30 @@ flowchart LR
   "ok": false,
   "requestId": "a4a45a39-92a0-4112-8a18-596a9553c9af",
   "error": {
-    "code": "INSUFFICIENT_POINTS",
-    "message": "あと1ポイントためよう",
+    "code": "SKILL_NOT_AVAILABLE",
+    "message": "このスキルはつかえないよ",
     "retryable": false,
-    "details": {"required": 3, "current": 2}
+    "details": {}
   }
 }
 ```
 
-業務エラーも成功ハンドラーにこの形式で返す。GASやネットワークの例外は失敗ハンドラーで扱い、変更結果は未確定とする。読み取り応答はrequestId=null、replayed=false。versionは状態を含む読み取りと変更成功で返し、セリフ応答では省略する。
+業務エラーも成功ハンドラーにこの形式で返す。GASやネットワークの例外は失敗ハンドラーで扱い、変更結果は未確定とする。読み取り応答はrequestId=null、replayed=false。versionは状態を含む読み取りと変更成功で返し、管理応答ではゲームversionを返さない。
+
+公開synthesizeとrecipes応答は廃止。未知操作としてINVALID_ARGUMENTで拒否し、S04の対戦要求も拒否する。旧SYNTHESISの読取・照合は保管用の内部処理だけに残す。
 
 ### 操作別契約
 
 | op | payload | 成功時のdata | 主な検証 |
 |---|---|---|---|
-| bootstrap | `{}` | `{player, state, characters, skills, characterSkills, recipes, masterVersion, limits}` | 初期状態・全マスター・Actionsの整合性 |
+| bootstrap | `{}` | `{player, state, characters, skills, characterSkills, masterVersion, datasetId, limits, dialogueCatalog}` | 初期状態・全マスター・Actionsの整合性 |
 | drawCharacter | `{}` | `{result:{characterId, candidateCount}, state}` | 未所有候補がある |
 | playRound | `{characterId, skillId, hand}` | `{result:{characterId, skillId, playerHand, cpuHand, outcome, basePoints, bonusPoints, earnedPoints}, state}` | 所有、習得、適性、手の許可値 |
-| synthesize | `{ingredientSkillIds:["S01","S02"]}` | `{result:{recipeId, unlockedSkillId, spentPoints}, state}` | 配列長2、重複なし、固定レシピ、習得、未解放、残高 |
 | getRelations | `{}` | `{player, recentActions, characters, skills, characterSkills, ownedCharacterIds, unlockedSkillIds}` | 最新10件のみ。トークンや内部パスを除く |
-| getBattleLine | `{roundRequestId:"UUID"}` | `{roundRequestId,text,source:"ai"\|"preset"}` | P001の保存済みROUNDのみ。生成済み・予約済みは再生成しない |
 
-bootstrapのplayerは `{playerId, displayName}`。charactersは `{characterId,name,assetId}`、skillsは `{skillId,name,effectCode,bonus,assetId}`、characterSkillsは `{characterId,skillId}`、recipesは `{recipeId,ingredientA,ingredientB,resultSkillId,cost}` の配列。limitsは `{maxActions:200,remainingActions:n}`。
+dialogueCatalogは公開版と採用済み9枠の短文集。下書き・秘密情報は含めず、セリフ側の欠落・不整合は空集で定型文へ切り替える。getBattleLine案は廃止。管理画面・adminApiの認可と保存契約は[現行設計](specs/ai-battle-dialogue.md)に従い、ゲームapiから管理操作を呼べないようにする。
+
+bootstrapのplayerは `{playerId, displayName}`。charactersは `{characterId,name,assetId}`、skillsは `{skillId,name,effectCode,bonus,assetId}`、characterSkillsは `{characterId,skillId}` の配列。limitsは `{maxActions:200,remainingActions:n}`。新規masterVersionは2。datasetIdはサーバーで接続ブックIDをSHA-256化した非秘密の識別子とし、元のDrive IDは返さない。コピー先は別IDになる。保留要求の保存先をmasterVersionとdatasetIdで分離し、別ブックへ旧要求を送らない。
 
 recentActionsは `{actionId,type,createdAt,result}` の配列で新しい順。payloadHashや入力の内部記録は返さない。getRelationsのversionは対応する状態のversion。Assetsは既存データ互換用に残すレガシー表となり、ゲームは参照しない。
 
@@ -178,7 +178,7 @@ playerIdはクライアントから受け取らず、初版サーバー内でP00
 
 ## 保存・実行境界
 
-- 状態変更は `drawCharacter` / `playRound` / `synthesize` の3操作。画面は1件ずつ送信し、成功保存を確認してから結果を演出する。
+- 状態変更は `drawCharacter` / `playRound` の2操作。画面は1件ずつ送信し、成功保存を確認してから結果を演出する。
 - 8シート、1行追記、ScriptLock、再送と状態復元の詳細は[データモデル](05_data_model.md)。Sheetsの複数表更新をDBトランザクションとみなさない。
 - 認可は提供者本人限定の公開設定を前提とする。公開APIに任意playerId・Drive fileId・シート名・URLを指定する機能を作らない。内部関数の末尾 `_` は認可・入力検証の代替ではない。
 - キャッシュは補助のみ。最新状態・重複判定の正本はSheetsとする。文字列はtextContent等で表示し、任意HTML・コードを実行しない。
@@ -191,7 +191,6 @@ playerIdはクライアントから受け取らず、初版サーバー内でP00
 |---|---|---|
 | キャラ・固定スキル追加 | マスター、図形カード、定型セリフ、適性、受入条件の更新 | 効果コードが既存ならロジック追加は不要 |
 | 新しい効果 | Rulesの許可コード・表示・試験を追加 | AIが任意コードや効果値を決めない |
-| 3素材以上の合成 | RecipeIngredientsと数量、在庫消費を設計 | 初版の2素材・非消費とは別仕様 |
 | 個別プレイヤー | 認証、主体からのID解決、所有権検証、記録分離 | 固定P001を置き換える |
 | 教室での同時利用 | 負荷測定、運用管理、保存先選定 | ScriptLockの全体直列化がボトルネックになる |
 | DBへの移行 | PlayerCharacters、PlayerSkills、対戦表、取引・一意制約 | JSONスナップショットを正規化した現在状態へ移す |
@@ -204,6 +203,6 @@ playerIdはクライアントから受け取らず、初版サーバー内でP00
 
 ### ゲーム実装へ渡す境界（③）
 
-`commitAction_(request, produce, book?)` は入力検証→ScriptLock→全表読込→requestId→version→200件上限の順に判定し、初回だけ `produce(state, normalizedPayload, tables)` を呼ぶ。戻り値は `{result,state}`。Actionsの保存済み結果と状態差分の検証は `validateStoredTransition_` が行い、乱数は引かない。後続GameServiceは所有・習得・適性・残高等の業務エラーを判定して実結果を生成し、この境界へ接続する。ゲーム3操作の公開サービスは現時点で停止するため、疎通用加点APIは存在しない。
+`commitAction_(request, produce, book?)` は入力検証→ScriptLock→全表読込→requestId→version→200件上限の順に判定し、初回だけ `produce(state, normalizedPayload, tables)` を呼ぶ。戻り値は `{result,state}`。Actionsの保存済み結果と状態差分の検証は `validateStoredTransition_` が行い、乱数は引かない。後続GameServiceは所有・初期習得・適性・手等の業務エラーを判定して実結果を生成し、この境界へ接続する。ゲーム2操作の公開サービスは現時点で停止するため、疎通用加点APIは存在しない。
 
-クライアントは `App.commands.start(op,payload,expectedVersion)`、`retry()`、`sync()` を使用する。startはbootstrap同期後のみ許可し、保留中・通信中・保存領域利用不可・未同期は変更ボタンを無効にする。retryは当該操作の結果と最新bootstrapを分けて返す。演出は保存成功を確認してから行う。
+クライアントは `App.commands.start(op,payload,expectedVersion)`（現行コードの境界。新実装ではbootstrapで取得するdatasetIdとmasterVersionによる保留要求の隔離を追加）、`retry()`、`sync()` を使用する。startはbootstrap同期後のみ許可し、保留中・通信中・保存領域利用不可・未同期は変更ボタンを無効にする。retryは当該操作の結果と最新bootstrapを分けて返す。演出は保存成功を確認してから行う。
