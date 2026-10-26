@@ -6,9 +6,13 @@
     function create({
       rpc = (request) => App.api.call(request),
       storage,
+      initial,
       uuid = () => crypto.randomUUID(),
       changed = () => {},
     } = {}) {
+      const datasetId = initial?.data?.datasetId;
+      const storageKey = KEY + "-2-" + datasetId;
+      let latest = initial;
       let pending = null,
         busy = false,
         blocked = false,
@@ -29,8 +33,9 @@
         if (
           !request ||
           Object.keys(request).sort().join() !==
-            "expectedVersion,op,payload,requestId" ||
-          !["drawCharacter", "playRound", "synthesize"].includes(request.op) ||
+            "datasetId,expectedVersion,op,payload,requestId" ||
+          !["drawCharacter", "playRound"].includes(request.op) ||
+          request.datasetId !== datasetId ||
           typeof request.requestId !== "string" ||
           !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
             request.requestId,
@@ -46,7 +51,13 @@
       }
       try {
         storage = storage || window.sessionStorage;
-        const text = storage.getItem(KEY);
+        if (
+          !/^[a-f0-9]{64}$/.test(datasetId) ||
+          initial.data.masterVersion !== 2 ||
+          storage.getItem(KEY) !== null
+        )
+          throw fail("PENDING_INVALID");
+        const text = storage.getItem(storageKey);
         if (text !== null) {
           if (new TextEncoder().encode(text).length > 4096)
             throw fail("PENDING_INVALID");
@@ -58,7 +69,7 @@
       }
       function clear() {
         try {
-          storage.removeItem(KEY);
+          storage.removeItem(storageKey);
           pending = null;
         } catch (_) {
           blocked = true;
@@ -69,9 +80,12 @@
         const response = await rpc({ op: "bootstrap", payload: {} });
         if (
           !Number.isSafeInteger(response.version) ||
-          response.version !== response.data?.state?.version
+          response.version !== response.data?.state?.version ||
+          response.data.datasetId !== datasetId ||
+          response.data.masterVersion !== 2
         )
           throw fail("INVALID_RESPONSE");
+        latest = response;
         needsSync = false;
         return response;
       }
@@ -86,7 +100,7 @@
           notify();
         }
       }
-      async function retry() {
+      async function retry(initialSend = false) {
         if (busy || blocked || !pending) throw fail("PENDING_UNRESOLVED");
         busy = true;
         notify();
@@ -111,9 +125,6 @@
               "CHARACTER_NOT_OWNED",
               "SKILL_NOT_AVAILABLE",
               "ALL_OWNED",
-              "RECIPE_NOT_FOUND",
-              "INSUFFICIENT_POINTS",
-              "ALREADY_UNLOCKED",
             ];
             if (error.kind === "business" && definite.includes(error.code)) {
               clear();
@@ -126,6 +137,22 @@
           }
           clear();
           needsSync = true;
+          if (initialSend && !mutation.replayed) {
+            latest = {
+              ...latest,
+              version: mutation.version,
+              data: {
+                ...latest.data,
+                state: mutation.data.state,
+                limits: {
+                  maxActions: 200,
+                  remainingActions: 200 - mutation.version,
+                },
+              },
+            };
+            needsSync = false;
+            return { mutation, latest };
+          }
           return { mutation, latest: await refresh() };
         } finally {
           busy = false;
@@ -136,19 +163,26 @@
         if (busy || pending || blocked || needsSync)
           throw fail("PENDING_UNRESOLVED");
         const request = JSON.parse(
-          JSON.stringify({ op, payload, expectedVersion, requestId: uuid() }),
+          JSON.stringify({
+            op,
+            payload,
+            expectedVersion,
+            datasetId,
+            requestId: uuid(),
+          }),
         );
         valid(request);
         try {
-          storage.setItem(KEY, JSON.stringify(request));
+          storage.setItem(storageKey, JSON.stringify(request));
         } catch (_) {
           blocked = true;
           notify();
           throw fail("STORAGE_UNAVAILABLE");
         }
         pending = request;
-        return retry();
+        return retry(true);
       }
+      if (initial && !blocked) needsSync = false;
       return { status, start, retry, sync };
     }
     return { create, KEY };

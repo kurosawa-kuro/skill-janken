@@ -43,7 +43,9 @@ function tableDefinitions_() {
   };
 }
 
-function initialTables_() {
+function initialTables_(masterVersion = 2) {
+  if (masterVersion === 1) return legacyTables_();
+  if (masterVersion !== 2) throw new AppError_("DATA_INTEGRITY_ERROR");
   const state = {
     schemaVersion: 1,
     version: 0,
@@ -56,45 +58,37 @@ function initialTables_() {
       ["P001", "たんけんたい", JSON.stringify(state), new Date().toISOString()],
     ],
     Characters: [
-      ["C01", "ひのこ", "A_C01", 1, true],
-      ["C02", "しずく", "A_C02", 2, true],
-      ["C03", "このは", "A_C03", 3, true],
+      ["C01", "ひのこ", "", 1, true],
+      ["C02", "しずく", "", 2, true],
+      ["C03", "このは", "", 3, true],
     ],
     Skills: [
-      ["S01", "かちのひらめき", "WIN_BONUS", 1, "A_S01", true],
-      ["S02", "まけてもいっぽ", "LOSE_BONUS", 1, "A_S02", true],
-      ["S03", "あいこのわ", "DRAW_BONUS", 1, "A_S03", true],
-      ["S04", "たんきゅうのひかり", "ALWAYS_BONUS", 1, "A_S04", true],
+      ["S01", "かちのひらめき", "WIN_BONUS", 1, "", true],
+      ["S02", "まけてもいっぽ", "LOSE_BONUS", 1, "", true],
+      ["S03", "あいこのわ", "DRAW_BONUS", 1, "", true],
     ],
     CharacterSkills: [
       ["C01", "S01"],
       ["C01", "S02"],
-      ["C01", "S04"],
       ["C02", "S02"],
       ["C02", "S03"],
-      ["C02", "S04"],
       ["C03", "S01"],
       ["C03", "S03"],
-      ["C03", "S04"],
     ],
-    Recipes: [["R01", "S01", "S02", "S01|S02", "S04", 3, true]],
-    Assets: ["C01", "C02", "C03", "S01", "S02", "S03", "S04"].map((id) => [
-      "A_" + id,
-      "",
-      "",
-      "",
-      0,
-      0,
-      "DRAFT",
-      "v1",
-      "",
-      "",
-    ]),
+    Recipes: [],
+    Assets: [],
     Actions: [],
     Settings: [
-      ["MASTER_VERSION", 1],
+      ["MASTER_VERSION", 2],
       ["MAX_ACTIONS", 200],
       ["SCHEMA_VERSION", 1],
     ],
   };
+}
+function masterVersion_(tables) {
+  const version = tables.Settings.find(
+    (r) => r.key === "MASTER_VERSION",
+  )?.value;
+  if (![1, 2].includes(version)) throw new AppError_("DATA_INTEGRITY_ERROR");
+  return version;
 }

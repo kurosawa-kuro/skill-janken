@@ -15,71 +15,31 @@ function page(gas, google) {
     url: "https://example.invalid",
     runScripts: "dangerously",
     beforeParse(window) {
+      window.TextEncoder = TextEncoder;
       if (google) window.google = google;
     },
   });
 }
 
-test("asset loads through the allowed ID and decode failure restores the name", async () => {
-  const requests = [];
-  const gas = createGas({
-    services: {
-      bootstrap: bootstrapResult,
-      getAsset: ({ assetId }) => ({
-        data: {
-          assetId,
-          version: 1,
-          mimeType: "image/webp",
-          base64: "UklGRg==",
-        },
-      }),
-    },
-  });
+test("game starts with one bootstrap and CSS companions, without asset or AI RPC", async () => {
+  const gas = createGas({ services: { bootstrap: bootstrapResult } }),
+    requests = [];
   const dom = page(
     gas,
-    scriptRunner((request) => {
-      requests.push(request);
-      return gas.call(request);
+    scriptRunner((r) => {
+      requests.push(r.op);
+      return gas.call(r);
     }),
   );
   try {
     await tick();
-    const img = dom.window.document.querySelector("#companion img");
-    const name = dom.window.document.querySelector("#companion p");
-    assert.equal(requests[1].payload.assetId, "A_C01");
-    assert.equal(img.alt, "ひのこ");
-    assert.equal(img.hidden, true);
-    img.dispatchEvent(new dom.window.Event("load"));
-    assert.equal(img.hidden, false);
-    assert.equal(name.hidden, true);
-    img.dispatchEvent(new dom.window.Event("error"));
-    assert.equal(name.hidden, false);
-    assert.equal(dom.window.document.querySelector("#companion img"), null);
-    assert.equal(dom.window.document.querySelector("#summary").hidden, false);
-  } finally {
-    dom.window.close();
-  }
-});
-
-test("unavailable assets keep the named fallback without retrying or hiding state", async () => {
-  const gas = createGas({ services: { bootstrap: bootstrapResult } });
-  let calls = 0;
-  const dom = page(
-    gas,
-    scriptRunner((request) => {
-      calls++;
-      return gas.call(request);
-    }),
-  );
-  try {
-    await tick();
-    assert.equal(calls, 2);
-    assert.equal(
-      dom.window.document.querySelector("#companion").textContent,
-      "ひのこ",
+    assert.deepEqual(requests, ["bootstrap"]);
+    assert.equal(dom.window.document.querySelectorAll("img").length, 0);
+    assert.match(
+      dom.window.document.querySelector("#view").textContent,
+      /ひのこ/,
     );
     assert.equal(dom.window.document.querySelector("#summary").hidden, false);
-    assert.equal(dom.window.document.querySelector("#retry").hidden, true);
   } finally {
     dom.window.close();
   }
@@ -161,7 +121,7 @@ test("business failure remains distinct and manual retry recovers without auto r
     dom.window.document.querySelector("#retry").click();
     dom.window.document.querySelector("#retry").click();
     await tick();
-    assert.equal(calls, before + 2); // bootstrap + one optional asset request
+    assert.equal(calls, before + 1); // one bootstrap only
     assert.equal(dom.window.document.querySelector("#summary").hidden, false);
   } finally {
     dom.window.close();

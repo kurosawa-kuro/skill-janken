@@ -2,11 +2,13 @@ import { createGas } from "./gas.mjs";
 
 // Minimal Sheets test double, adapted from photo-diary's cell/range mock.
 // Keeps native numeric/boolean types and exposes partial-row corruption.
-export function createSheetGas() {
+export function createSheetGas(masterVersion = 2) {
   const gas = createGas({
     properties: { JANKEN_SPREADSHEET_ID: "test-sheet" },
   });
-  const initial = JSON.parse(JSON.stringify(gas.run("initialTables_()")));
+  const initial = JSON.parse(
+    JSON.stringify(gas.run(`initialTables_(${masterVersion})`)),
+  );
   const definitions = JSON.parse(
     JSON.stringify(gas.run("tableDefinitions_()")),
   );
@@ -81,6 +83,7 @@ export function createSheetGas() {
   };
   gas.context.PropertiesService.getScriptProperties = () => ({
     getProperty: (name) => gas.props.get(name) ?? null,
+    getProperties: () => Object.fromEntries(gas.props),
     setProperty: (name, value) => gas.props.set(name, value),
   });
   gas.context.LockService = {
@@ -96,7 +99,9 @@ export function createSheetGas() {
       },
     }),
   };
-  gas.context.imageFolder_ = () => ({});
+  gas.context.Session = {
+    getActiveUser: () => ({ getEmail: () => "owner@example.com" }),
+  };
   gas.context.isPrivateOwned_ = () => true;
   gas.context.DriveApp = { getFileById: () => ({}) };
   return { ...gas, sheets, book, lock };

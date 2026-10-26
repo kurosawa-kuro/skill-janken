@@ -9,7 +9,7 @@ Codex は作業前にこのファイルを読むため、ここには repo 共�
 - 名称: スキルじゃんけんラボ。仲間集め・スキル選択・CPUじゃんけんを通して、1対多・多対多のデータのつながりを学ぶ小規模Webアプリ。
 - 初版: 提供者の管理端末・本人限定公開・P001の1プレイヤー・行動記録200件まで。小学校中〜高学年を仮対象とし、大人が伴走する。
 - 技術: GAS（HTML Service / JavaScript）、HTML/CSS/JavaScript、Google Sheets、非公開のGoogle Drive。Geminiは管理画面でのセリフ事前生成にだけ使う。画像生成・画像登録・配信は廃止対象で、標準表示はHTML/CSSと名前・効果文。
-- 現状: 2026年10月26日、①土台作成は完了。②ではSheetsの8表初期化・読込、非公開Driveの検証とWebP登録・取得、Gemini画像生成用アダプターを実装した。専用GASの本人限定試験配置で初期記録の表示と再読込を確認済み。テスト用WebPの実配信を確認済み。Geminiの認証・モデル一覧取得は成功したが画像生成はHTTP 429。当時の画像用モデルにはAPI無料枠がなく、無料プランでの待機・再試行では解決しない。別アカウント拒否は未確認。ゲーム機能・最終受入は未完了。③ではActions追記・最新状態復元・同一要求の再送・保留要求の復元・画像キャッシュ・検証付きバックアップコピーを実装した。ゲームの変更APIと4画面は後続。画像生成は廃止し、画像素材なしのカード表示と、管理画面で事前生成・採用するAIセリフへ再設計した。プレイ中の生成は禁止。現行Web v2の画像コード撤去とテキストAIは未実装。旧画像生成のHTTP 429は待機課題から外す。約1日（8時間）は開発目標であり、完成実績ではない。
+- 現状: 2026-10-26：合成・画像機能を撤去し、3スキル・6適性のゲーム4画面、保存・再送、学習表示、管理画面でのAIセリフ事前生成・採用をローカル実装済み。npm run check（46テスト・30実行ファイルのビルド・360px幅Chromium）が成功。実GASは従来のWeb v2のまま。新ブックへの切替・新コード配置・Gemini実生成・実機と別アカウントの確認は未完了。 [最新記録](docs/tasks/03_active/mvp-release-verification.md)を参照。
 
 ## 最初に読む仕様
 
@@ -17,7 +17,7 @@ Codex は作業前にこのファイルを読むため、ここには repo 共�
 
 - 製品仕様: [要件・画面](docs/01_requirements.md) / [構成・API](docs/02_architecture.md) / [用語・ゲームルール](docs/03_domain_model.md)。
 - 実装と運用: [開発・AI連携](docs/04_workflows.md) / [保存・再送](docs/05_data_model.md) / [エラー](docs/06_error_policy.md) / [試験結果の記録先](docs/07_test_strategy.md) / [公開・復旧](docs/08_release_runbook.md)。
-- 追跡: [反映監査の記録](docs/09_source_traceability.md) / [MVP実装バックログ](docs/tasks/02_backlog/mvp-implementation.md)。試験結果は製品文書とタスクへ記録する。
+- 追跡: [反映監査の記録](docs/09_source_traceability.md) / [MVP実装バックログ](docs/tasks/03_active/mvp-implementation.md)。試験結果は製品文書とタスクへ記録する。
 - 元の企画・仕様・設計3文書は[archive](docs/archive/README.md)へ退避済み。過去の出典確認にのみ使い、現行文書より優先しない。今後の仕様変更でアーカイブを更新しない。
 
 ## MVPの不変条件
@@ -42,7 +42,7 @@ Codex は作業前にこのファイルを読むため、ここには repo 共�
 
 ## セットアップ / 主要コマンド
 
-Node.js 22以上。ルートで `npm ci`、必要なら `npx playwright install chromium`、`npm run check`。checkは整形確認→40件のNodeテスト→ビルド→Chromium確認。`npm run preview` は127.0.0.1:4173の仮データ表示で、実GASではない。Makefileはnpmのラッパー。`npm run build` は24実行ファイルと.claspignoreのみをdistへ出力し、アップロードしない。scripts/testsや接続設定を配置物へ混ぜない。
+Node.js 22以上。ルートで `npm ci`、必要なら `npx playwright install chromium`、`npm run check`。checkは整形確認→46件のNodeテスト→ビルド→Chromium確認。`npm run preview` は127.0.0.1:4173の仮データ表示で、実GASではない。Makefileはnpmのラッパー。`npm run build` は30実行ファイルと.claspignoreのみをdistへ出力し、アップロードしない。scripts/testsや接続設定を配置物へ混ぜない。
 
 GASコードはsrc/serverの通常JS、画面はsrc/client、Nodeの開発ツールはscripts/testsのES modules。実アダプターが未接続の間はエラーで停止し、実行時に仮データへ切り替えない。接続設定のキー名はdocs/04・05に記載する。
 

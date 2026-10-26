@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <base target="_top" />
+    <meta charset="utf-8" />
+    <?!= include_("client/styles") ?>
+  </head>
+  <body>
+    <main>
+      <p class="eyebrow">提供者用・事前準備</p>
+      <h1>なかまのセリフ管理</h1>
+      <p>
+        候補を作り、内容を確認してから採用します。ゲーム中にAIは呼び出しません。
+      </p>
+      <section class="panel">
+        <p id="admin-status" role="status" aria-live="polite">読み込み中…</p>
+        <button id="admin-refresh">一覧を読み直す</button
+        ><button id="admin-init" hidden>セリフの保存先を準備</button
+        ><button id="admin-resume" hidden>未確認の生成結果を確認</button>
+      </section>
+      <div id="admin-slots"></div>
+    </main>
+    <script>
+      window.CONFIG = <?!= serializeForScript_(config) ?>;
+    </script>
+    <?!= include_("client/core/dom") ?><?!= include_("client/admin-app") ?>
+  </body>
+</html>

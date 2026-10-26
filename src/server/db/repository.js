@@ -12,7 +12,7 @@ function readTables_(
     const columns = definitions[name];
     if (JSON.stringify(values[0]) !== JSON.stringify(columns))
       throw new AppError_("DATA_INTEGRITY_ERROR");
-    // Keep sheet row positions stable for locked asset updates; reject gaps.
+    // Preserve row positions; reject partial rows and gaps.
     tables[name] = values.slice(1).map((row) => {
       if (row[0] === "") throw new AppError_("DATA_INTEGRITY_ERROR");
       return Object.fromEntries(
@@ -25,7 +25,8 @@ function readTables_(
 
 function readSnapshot_(book, validateTransition = validateStoredTransition_) {
   const tables = readTables_(book);
-  const expected = initialTables_();
+  const masterVersion = masterVersion_(tables);
+  const expected = initialTables_(masterVersion);
   for (const name of [
     "Characters",
     "Skills",
@@ -60,8 +61,9 @@ function readSnapshot_(book, validateTransition = validateStoredTransition_) {
     throw new AppError_("DATA_INTEGRITY_ERROR");
   const assetIds = expected.Assets.map((row) => row[0]);
   if (
-    tables.Assets.length !== 7 ||
-    new Set(tables.Assets.map((row) => row.assetId)).size !== 7 ||
+    tables.Assets.length !== expected.Assets.length ||
+    new Set(tables.Assets.map((row) => row.assetId)).size !==
+      expected.Assets.length ||
     tables.Assets.some(
       (row) =>
         !assetIds.includes(row.assetId) ||
@@ -119,14 +121,7 @@ function readSnapshot_(book, validateTransition = validateStoredTransition_) {
         "assetId",
       ]),
       characterSkills: tables.CharacterSkills,
-      recipes: pick(tables.Recipes, [
-        "recipeId",
-        "ingredientA",
-        "ingredientB",
-        "resultSkillId",
-        "cost",
-      ]),
-      masterVersion: 1,
+      masterVersion,
       limits: {
         maxActions: 200,
         remainingActions: 200 - journal.actions.length,

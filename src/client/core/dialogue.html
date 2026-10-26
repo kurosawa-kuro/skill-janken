@@ -1,0 +1,47 @@
+<script>
+  App.dialogue = {
+    preset(characterId, outcome) {
+      return (
+        {
+          C01: {
+            WIN: "やったね！つぎもたのしもう！",
+            LOSE: "だいじょうぶ！もういちどためそう！",
+            DRAW: "おんなじだね！いきがぴったり！",
+          },
+          C02: {
+            WIN: "いっしょにできて、うれしいね。",
+            LOSE: "だいじょうぶ。つぎもいっしょに！",
+            DRAW: "おんなじ手。なかよしだね。",
+          },
+          C03: {
+            WIN: "わあ、うまくいったね！",
+            LOSE: "つぎはどんな手にしようかな？",
+            DRAW: "おんなじ手だね。つぎはどうしよう？",
+          },
+        }[characterId]?.[outcome] || "いっしょにたのしもう！"
+      );
+    },
+    choose(catalog, requestId, result) {
+      const entry = catalog?.entries?.find(
+        (e) =>
+          e.characterId === result.characterId && e.outcome === result.outcome,
+      );
+      if (
+        entry?.texts?.length &&
+        entry.texts.every((t) => typeof t === "string" && [...t].length <= 40)
+      ) {
+        let n = 0;
+        for (const c of requestId.toLowerCase())
+          n = (n * 31 + c.charCodeAt(0)) >>> 0;
+        return {
+          text: entry.texts[n % entry.texts.length],
+          source: "AIでつくったひとこと",
+        };
+      }
+      return {
+        text: this.preset(result.characterId, result.outcome),
+        source: "なかまのひとこと",
+      };
+    },
+  };
+</script>

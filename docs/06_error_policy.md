@@ -2,7 +2,7 @@
 
 反映日：2026年10月26日。初期資料（退避済み）：[02_仕様書.md](archive/スキルじゃんけんラボ_企画・仕様・設計/02_仕様書.md)・[03_設計基礎書.md](archive/スキルじゃんけんラボ_企画・仕様・設計/03_設計基礎書.md)（v1.0）。
 
-本書は提案仕様をプロジェクト用に整理した設計文書。アプリ実装・受入試験・公開は未完了であり、実績や試験合格を示さない。参照元と本書の役割・更新規約は[索引](00_index.md)を参照。
+本書は現行仕様を定義する。ローカル実装・検証済み範囲と未完了の実環境確認は[最新記録](tasks/03_active/mvp-release-verification.md)および[テスト戦略](07_test_strategy.md)で区別する。参照元と本書の役割・更新規約は[索引](00_index.md)を参照。
 
 ## 応答と結果未確定の区別
 
@@ -22,13 +22,14 @@
 | REQUEST_ID_CONFLICT | つうしんをかくにんしてね | 同じIDで異なる内容。大人に案内 |
 | BUSY | ちょっとまって、もういちど | 同じ要求を再送可能 |
 | OP_LIMIT | きょうのデモはここまで。大人をよんでね | 200件上限。提供者が保存・初期化 |
+| DATASET_MISMATCH | このきろくは大人といっしょにかくにんしてね | 保存先変更。旧要求を新ブックへ送らない |
 | LEGACY_DATA_READ_ONLY | このきろくは大人といっしょにかくにんしてね | 旧マスター版の新ゲーム書込を停止。自動移行・初期化なし |
 | DATA_INTEGRITY_ERROR | きろくをかくにんしています。大人をよんでね | 変更を停止。自動初期化しない |
 | INTERNAL_ERROR / 通信失敗 | つうしんをかくにんして、もういちど | 結果未確定。同じIDで再送 |
 
 内部例外やGoogleのエラー本文、APIキー、DriveのファイルIDは子ども向け画面に表示しない。
 
-①土台作成ではINVALID_ARGUMENT・ASSET_UNAVAILABLE・DATA_INTEGRITY_ERROR・INTERNAL_ERRORの共通応答と、クライアント側の業務／通信失敗の区別を実装した。設定不足・未実装処理はINTERNAL_ERROR（retryable=false）等で停止し、仮データの成功に置き換えない。②では実読取・非公開画像・生成アダプターとBUSYを追加した。設定不足は設定後に手動再試行する。③でActionsの追記・再送とVERSION_CONFLICT・REQUEST_ID_CONFLICT・OP_LIMITを追加した。壊れたActionsではDATA_INTEGRITY_ERRORで停止する。ゲーム操作の業務判定は後続。
+①土台作成ではINVALID_ARGUMENT・ASSET_UNAVAILABLE・DATA_INTEGRITY_ERROR・INTERNAL_ERRORの共通応答と、クライアント側の業務／通信失敗の区別を実装した。設定不足・未実装処理はINTERNAL_ERROR（retryable=false）等で停止し、仮データの成功に置き換えない。②では実読取・非公開画像・生成アダプターとBUSYを追加した。設定不足は設定後に手動再試行する。③でActionsの追記・再送とVERSION_CONFLICT・REQUEST_ID_CONFLICT・OP_LIMITを追加した。壊れたActionsではDATA_INTEGRITY_ERRORで停止する。ゲーム操作の業務判定はローカル実装済み。
 
 不明な例外は定型のINTERNAL_ERRORへ変換する。元の例外本文・スタックをレスポンスやアプリログへ出さない。クライアント側のNETWORK_ERRORは通信失敗を識別するローカルコードであり、新しいサーバー業務コードではない。
 
@@ -68,4 +69,6 @@
 
 送信前のsessionStorage保存に失敗したら送信しない。読込時に破損・容量超過・保存領域アクセス失敗があれば要求を消さず変更を停止する。通信失敗、BUSY、INTERNAL_ERROR、DATA_INTEGRITY_ERROR、REQUEST_ID_CONFLICT、応答IDや版の不一致は保留を維持する。自動再送はしない。
 
-成功応答のID・版・状態を照合して保留を削除し、bootstrapで最新化する。削除失敗は変更停止。成功後のbootstrap失敗では再送せず読取りを再試行する。VERSION_CONFLICT、OP_LIMIT、入力や業務条件の確定的な拒否は保留を解除して最新化する。新規操作は同期成功後のみ許可する。
+成功応答のID・版・状態を照合して保留を削除する。通常の初回成功は応答stateで更新し、手動再送・replayed=trueはbootstrapで最新化する。削除失敗は変更停止。成功後のbootstrap失敗では再送せず読取りを再試行する。VERSION_CONFLICT、OP_LIMIT、入力や業務条件の確定的な拒否は保留を解除して最新化する。新規操作は同期成功後のみ許可する。
+
+管理専用エラーはFORBIDDEN（実利用者不一致）、AI_DISABLED（明示trueでない）、AI_UNAVAILABLE（モデル不許可）、AI_LIMIT（日次20・停止中・累計予約200）。公開競合はVERSION_CONFLICT。外部本文は返さず、生成試行後の失敗はstatus=failed、予約だけ残った再確認はunknownとして自動再生成しない。

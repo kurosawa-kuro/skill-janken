@@ -3,9 +3,12 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { createSheetGas } from "./helpers/sheets.mjs";
 
+import { DATASET } from "./helpers/fixtures.mjs";
+
 const request = (version = 0) => ({
   op: "playRound",
   expectedVersion: version,
+  datasetId: DATASET,
   requestId: randomUUID(),
   payload: { characterId: "C01", skillId: "S01", hand: "rock" },
 });
@@ -59,49 +62,26 @@ test("journal commits once, restores latest state, and replays historical result
   assert.equal(JSON.stringify(relations).includes("payloadHash"), false);
 });
 
-test("normalized synthesis order and object key order share a hash; UTF-8 cell limits are enforced", () => {
-  const gas = createSheetGas();
-  const a = {
-    op: "synthesize",
-    expectedVersion: 3,
-    requestId: randomUUID(),
-    payload: { ingredientSkillIds: ["S02", "S01"] },
-  };
+test("canonical key order and UTF-8 limits remain strict", () => {
+  const g = createSheetGas(),
+    a = request();
   const b = {
-    payload: { ingredientSkillIds: ["S01", "S02"] },
+    payload: a.payload,
+    datasetId: a.datasetId,
     requestId: a.requestId,
-    expectedVersion: 3,
-    op: "synthesize",
+    op: a.op,
+    expectedVersion: 0,
   };
   assert.equal(
-    gas.context.payloadHash_(gas.context.normalizedInput_(a)),
-    gas.context.payloadHash_(gas.context.normalizedInput_(b)),
+    g.context.payloadHash_(g.context.normalizedInput_(a)),
+    g.context.payloadHash_(g.context.normalizedInput_(b)),
   );
-  gas.context.jsonCell_({ text: "あ".repeat(2700) });
+  g.context.jsonCell_({ text: "あ".repeat(2700) });
   assert.throws(
-    () => gas.context.jsonCell_({ text: "あ".repeat(2800) }),
+    () => g.context.jsonCell_({ text: "あ".repeat(2800) }),
     code("DATA_INTEGRITY_ERROR"),
   );
-  assert.throws(
-    () => gas.context.parseCell_("[]"),
-    code("DATA_INTEGRITY_ERROR"),
-  );
-  for (let i = 0; i < 3; i++) gas.context.commitAction_(request(i), round);
-  const producer = (state) => ({
-    state: {
-      ...state,
-      version: 4,
-      points: 0,
-      unlockedSkillIds: [...state.unlockedSkillIds, "S04"],
-    },
-    result: { recipeId: "R01", unlockedSkillId: "S04", spentPoints: 3 },
-  });
-  gas.context.commitAction_(a, producer);
-  assert.equal(
-    gas.context.commitAction_(b, () => assert.fail("recomputed")).replayed,
-    true,
-  );
-  assert.equal(gas.context.readSnapshot_().data.state.points, 0);
+  assert.throws(() => g.context.parseCell_("[]"), code("DATA_INTEGRITY_ERROR"));
 });
 
 test("draw transition checks candidate count, ownership, and exact next state before writing", () => {
@@ -109,6 +89,7 @@ test("draw transition checks candidate count, ownership, and exact next state be
   const draw = {
     op: "drawCharacter",
     expectedVersion: 0,
+    datasetId: DATASET,
     requestId: randomUUID(),
     payload: {},
   };
@@ -175,7 +156,7 @@ test("every journal row is validated; corruption cannot silently roll state back
       row[10] = 2;
     },
     (row) => {
-      row[11] = 2;
+      row[11] = 1;
     },
   ];
   for (const corrupt of changes) {
@@ -229,7 +210,7 @@ test("200-row limit still permits replay and rejects new writes before producer"
       gas.context.jsonCell_(change.state),
       new Date().toISOString(),
       1,
-      1,
+      2,
     ]);
     state = change.state;
   }
@@ -312,6 +293,7 @@ test("partial write blocks recovery instead of appending another row", () => {
 test("backup and restore verify copies including nonzero journal, without switching the running database", () => {
   const gas = createSheetGas();
   gas.context.commitAction_(request(), round);
+  gas.context.withLock_(() => gas.context.initializeDialogue_(gas.book));
   const books = new Map([["test-sheet", gas.book]]);
   let count = 0,
     corrupt = false;
@@ -322,7 +304,9 @@ test("backup and restore verify copies including nonzero journal, without switch
       const copyId = `copy-${++count}`;
       const copied = createSheetGas();
       for (const source of books.get(id).getSheets())
-        copied.sheets.get(source.name).rows = structuredClone(source.rows);
+        (
+          copied.sheets.get(source.name) || copied.book.insertSheet(source.name)
+        ).rows = structuredClone(source.rows);
       if (corrupt) copied.sheets.get("Actions").rows[1][8] = "{}";
       books.set(copyId, copied.book);
       copied.book.getId = () => copyId;

@@ -26,6 +26,13 @@ export function createGas({
     },
     Utilities: {
       getUuid: randomUUID,
+      formatDate: (date) =>
+        new Intl.DateTimeFormat("en-CA", {
+          timeZone: "Asia/Tokyo",
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+        }).format(date),
       DigestAlgorithm: { SHA_256: "sha256" },
       Charset: { UTF_8: "utf8" },
       computeDigest: (algorithm, text, encoding) => [
@@ -86,6 +93,6 @@ export function createGas({
       JSON.parse(
         JSON.stringify(context.api(JSON.parse(JSON.stringify(request)))),
       ),
-    render: () => context.doGet().getContent(),
+    render: (event) => context.doGet(event).getContent(),
   };
 }

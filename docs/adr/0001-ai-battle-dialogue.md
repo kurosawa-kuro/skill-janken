@@ -10,4 +10,4 @@
 
 要件と受入条件はdocs/01〜08へ反映し、AC16・AC17を改訂、AC24〜AC26を追加する。過去の画像疎通記録とアーカイブは履歴として保持する。保存スキーマ・既存Actions・素材を削除する操作は行わない。
 
-詳細：[AIセリフ設計](../specs/ai-battle-dialogue.md)。実装：[画像機能撤去とAIセリフ](../tasks/02_backlog/ai-battle-dialogue.md)。設計採用はWeb v2への反映済みを意味しない。
+詳細：[AIセリフ設計](../specs/ai-battle-dialogue.md)。実装：[画像機能撤去とAIセリフ](../tasks/03_active/ai-battle-dialogue.md)。設計採用はWeb v2への反映済みを意味しない。

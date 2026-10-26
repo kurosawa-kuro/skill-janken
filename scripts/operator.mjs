@@ -1,16 +1,22 @@
 // Prepare an editor-only maintenance upload. Never create a deployment/version
 // from this directory. After execution delete server/operator-run.gs in the
 // editor, then push ordinary dist. clasp 3.4.1 does not detect remote-only files.
-import { readFileSync, writeFileSync, mkdirSync, copyFileSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  copyFileSync,
+  existsSync,
+  unlinkSync,
+} from "node:fs";
 import { join, dirname } from "node:path";
 import { ROOT, RUNTIME_FILES } from "./files.mjs";
 
-const [operation, assetId, fileId] = process.argv.slice(2);
+const [operation, backupId, expectedId] = process.argv.slice(2);
 const connection = JSON.parse(readFileSync(join(ROOT, ".clasp.json"), "utf8"));
 const commands = {
   setup: "setupLab_()",
-  generate: "generateFirstAsset_()",
-  inspect: "inspectGemini_()",
+  create: "createNewLab_()",
   backup: "backupLab_()",
   verify: `withLock_(() => {
     // Isolated test copy only. This producer is never deployed with the app.
@@ -18,7 +24,7 @@ const commands = {
     const initialDigest = payloadHash_(original.tables);
     const isolated = backupLab_();
     const book = SpreadsheetApp.openById(isolated.spreadsheetId);
-    const request = { op: "playRound", requestId: Utilities.getUuid(), expectedVersion: original.data.state.version, payload: { characterId: "C01", skillId: "S01", hand: "rock" } };
+    const request = { op: "playRound", requestId: Utilities.getUuid(), expectedVersion: original.data.state.version, datasetId: payloadHash_(book.getId()), payload: { characterId: "C01", skillId: "S01", hand: "rock" } };
     const first = commitAction_(request, state => ({
       state: { ...state, version: state.version + 1, points: state.points + 1 },
       result: { characterId: "C01", skillId: "S01", playerHand: "rock", cpuHand: "rock", outcome: "DRAW", basePoints: 1, bonusPoints: 0, earnedPoints: 1 }
@@ -34,24 +40,28 @@ const commands = {
   })`,
 };
 let expression = commands[operation];
-if (operation === "restore" && /^[A-Za-z0-9_-]+$/.test(assetId || "")) {
-  expression = `restoreBackupToCopy_(${JSON.stringify(assetId)})`;
+if (operation === "restore" && /^[A-Za-z0-9_-]+$/.test(backupId || "")) {
+  expression = `restoreBackupToCopy_(${JSON.stringify(backupId)})`;
 }
 if (
-  operation === "register" &&
-  /^(A_C0[1-3]|A_S0[1-4])$/.test(assetId || "") &&
-  /^[A-Za-z0-9_-]+$/.test(fileId || "")
-) {
-  expression = `registerWebp_(${JSON.stringify(assetId)}, ${JSON.stringify(fileId)})`;
-}
+  operation === "activate" &&
+  /^[A-Za-z0-9_-]+$/.test(backupId || "") &&
+  /^[A-Za-z0-9_-]+$/.test(expectedId || "")
+)
+  expression = `activateLab_(${JSON.stringify(backupId)}, ${JSON.stringify(expectedId)})`;
 if (!expression || !connection.scriptId || connection.rootDir !== "dist")
   throw new Error(
-    "Usage: node scripts/operator.mjs setup|inspect|generate|backup|verify|restore BACKUP_ID|register A_C01 FILE_ID (ordinary connection must target dist)",
+    "Usage: node scripts/operator.mjs setup|create|backup|verify|restore BACKUP_ID|activate NEW_ID OLD_ID (ordinary connection must target dist)",
   );
-if (["backup", "restore"].includes(operation)) {
+if (["backup", "restore", "create", "activate"].includes(operation)) {
   expression = `(() => { const result = ${expression}; console.log(JSON.stringify(result)); return result; })()`;
 }
 const target = join(ROOT, "artifacts/operator");
+// Explicitly remove only obsolete generated artifacts from this fixed directory.
+for (const file of ["client/core/assets.html", "server/services/assets.js"]) {
+  const obsolete = join(target, file);
+  if (existsSync(obsolete)) unlinkSync(obsolete);
+}
 for (const file of RUNTIME_FILES) {
   mkdirSync(dirname(join(target, file)), { recursive: true });
   copyFileSync(join(ROOT, "dist", file), join(target, file));

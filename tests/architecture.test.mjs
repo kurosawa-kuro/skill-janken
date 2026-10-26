@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { ROOT, RUNTIME_FILES, walkFiles } from "../scripts/files.mjs";
 import { createGas } from "./helpers/gas.mjs";
 
-test("only doGet and api are public GAS function declarations", () => {
+test("only doGet, api and adminApi are public GAS function declarations", () => {
   const names = RUNTIME_FILES.filter((file) => file.endsWith(".js")).flatMap(
     (file) =>
       [
@@ -15,6 +15,7 @@ test("only doGet and api are public GAS function declarations", () => {
       ].map((match) => match[1]),
   );
   assert.deepEqual(names.filter((name) => !name.endsWith("_")).sort(), [
+    "adminApi",
     "api",
     "doGet",
   ]);

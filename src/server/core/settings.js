@@ -4,32 +4,29 @@ function requiredProperty_(name) {
     throw new AppError_("INTERNAL_ERROR");
   return value.trim();
 }
-
 function repositorySettings_() {
   return { spreadsheetId: requiredProperty_("JANKEN_SPREADSHEET_ID") };
 }
-
-function assetSettings_() {
-  return { folderId: requiredProperty_("JANKEN_DRIVE_FOLDER_ID") };
-}
-
 function geminiSettings_() {
-  return {
-    apiKey: requiredProperty_("GEMINI_API_KEY"),
-    model: requiredProperty_("GEMINI_IMAGE_MODEL"),
-  };
+  const p = PropertiesService.getScriptProperties();
+  if (p.getProperty("JANKEN_AI_TEXT_ENABLED") !== "true")
+    throw new AppError_("AI_DISABLED");
+  const model = requiredProperty_("GEMINI_TEXT_MODEL");
+  // Explicit reviewed text-only allowlist; never infer an image or paid fallback.
+  if (!["gemini-3.1-flash-lite"].includes(model))
+    throw new AppError_("AI_UNAVAILABLE");
+  return { model, apiKey: requiredProperty_("GEMINI_API_KEY") };
 }
-
-// Editor-only diagnostic: never returns values and never changes properties.
 function inspectConfiguration_() {
-  const properties = PropertiesService.getScriptProperties();
+  const p = PropertiesService.getScriptProperties();
   return [
     "JANKEN_SPREADSHEET_ID",
-    "JANKEN_DRIVE_FOLDER_ID",
+    "JANKEN_ADMIN_EMAIL",
     "GEMINI_API_KEY",
-    "GEMINI_IMAGE_MODEL",
+    "GEMINI_TEXT_MODEL",
+    "JANKEN_AI_TEXT_ENABLED",
   ].map((name) => ({
     name,
-    configured: Boolean((properties.getProperty(name) || "").trim()),
+    configured: Boolean((p.getProperty(name) || "").trim()),
   }));
 }

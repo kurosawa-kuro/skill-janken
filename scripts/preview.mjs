@@ -1,25 +1,28 @@
 import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
-import { createGas } from "../tests/helpers/gas.mjs";
-import { bootstrapResult } from "../tests/helpers/fixtures.mjs";
+import { createSheetGas } from "../tests/helpers/sheets.mjs";
 
 // Local development only: no real service, credentials, or public endpoint.
 export async function startPreview(port = 4173) {
-  const gas = createGas({ services: { bootstrap: bootstrapResult } });
-  const html = gas.render().replace(
-    "<body>",
-    `<body>
+  const gas = createSheetGas();
+  gas.props.set("JANKEN_ADMIN_EMAIL", "owner@example.com");
+  const html = (admin) =>
+    gas.render({ parameter: { view: admin ? "admin" : "" } }).replace(
+      "<body>",
+      `<body>
     <aside style="padding:8px;text-align:center;background:#fff0cb">ローカルプレビュー・テストデータ</aside>
     <script>
       window.google = {script:{run:{
         withSuccessHandler(fn) {this.success=fn;return this;},
         withFailureHandler(fn) {this.failure=fn;return this;},
-        api(request) {const success=this.success,failure=this.failure;
-          fetch('/__test_api',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request)})
+        api(request) {return this.send('/__test_api',request);},
+        adminApi(request) {return this.send('/__test_admin',request);},
+        send(path,request) {const success=this.success,failure=this.failure;
+          fetch(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(request)})
             .then(r=>{if(!r.ok)throw Error('preview');return r.json();}).then(success,failure);}
       }}};
     </script>`,
-  );
+    );
   const server = createServer(async (request, response) => {
     // Do not expose the preview as a proxy; it accepts only same-host test calls.
     const host = `127.0.0.1:${server.address().port}`;
@@ -31,13 +34,19 @@ export async function startPreview(port = 4173) {
       return;
     }
     response.setHeader("Cache-Control", "no-store");
-    if (request.method === "GET" && request.url === "/") {
+    if (
+      request.method === "GET" &&
+      ["/", "/?view=admin"].includes(request.url)
+    ) {
       response
         .writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
-        .end(html);
+        .end(html(request.url.includes("admin")));
       return;
     }
-    if (request.method === "POST" && request.url === "/__test_api") {
+    if (
+      request.method === "POST" &&
+      ["/__test_api", "/__test_admin"].includes(request.url)
+    ) {
       let body = "";
       try {
         for await (const chunk of request) {
@@ -47,7 +56,10 @@ export async function startPreview(port = 4173) {
             return;
           }
         }
-        const result = gas.call(JSON.parse(body));
+        const result =
+          request.url === "/__test_admin"
+            ? gas.context.adminApi(JSON.parse(body))
+            : gas.call(JSON.parse(body));
         response
           .writeHead(200, { "Content-Type": "application/json" })
           .end(JSON.stringify(result));
@@ -62,7 +74,7 @@ export async function startPreview(port = 4173) {
     server.once("error", reject);
     server.listen(port, "127.0.0.1", resolve);
   });
-  return { server, url: `http://127.0.0.1:${server.address().port}/` };
+  return { server, gas, url: `http://127.0.0.1:${server.address().port}/` };
 }
 
 if (

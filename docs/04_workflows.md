@@ -2,11 +2,11 @@
 
 反映日：2026年10月26日。初期資料（退避済み）：[01_企画書.md](archive/スキルじゃんけんラボ_企画・仕様・設計/01_企画書.md)・[03_設計基礎書.md](archive/スキルじゃんけんラボ_企画・仕様・設計/03_設計基礎書.md)（v1.0）。
 
-本書は提案仕様をプロジェクト用に整理した設計文書。アプリ実装・受入試験・公開は未完了であり、実績や試験合格を示さない。参照元と本書の役割・更新規約は[索引](00_index.md)を参照。
+本書は現行仕様を定義する。ローカル実装・検証済み範囲と未完了の実環境確認は[最新記録](tasks/03_active/mvp-release-verification.md)および[テスト戦略](07_test_strategy.md)で区別する。参照元と本書の役割・更新規約は[索引](00_index.md)を参照。
 
 ## 現在の開発環境
 
-2026-10-26、①土台作成は完了。②ではSheetsの8表初期化・読込、非公開Driveの検証とWebP登録・取得、Gemini画像生成用アダプターを実装した。専用GASの本人限定試験配置で初期記録の表示と再読込を確認済み。テスト用WebPの実配信を確認済み。Geminiの認証・モデル一覧取得は成功したが画像生成はHTTP 429。当時の画像用モデルにはAPI無料枠がなく、無料プランでの待機・再試行では解決しない。別アカウント拒否は未確認。ゲーム機能・最終受入は未完了。画像生成は廃止し、画像素材なしのカード表示と、管理画面で事前生成・採用するAIセリフへ再設計した。プレイ中の生成は禁止。現行Web v2の画像コード撤去とテキストAIは未実装。旧画像生成のHTTP 429は待機課題から外す。今回の実装開始時にはGit管理情報が存在し、既存のタスク文書の未コミット変更を保持して作業した。
+2026-10-26：合成・画像機能を撤去し、3スキル・6適性のゲーム4画面、保存・再送、学習表示、管理画面でのAIセリフ事前生成・採用をローカル実装済み。npm run check（46テスト・30実行ファイルのビルド・360px幅Chromium）が成功。実GASは従来のWeb v2のまま。新ブックへの切替・新コード配置・Gemini実生成・実機と別アカウントの確認は未完了。
 
 Node.js 22以上を用意し、プロジェクトルートで実行する。検証環境はWindows・Node.js v24.21.0・npm 11.19.0。依存バージョンはpackage-lock.jsonで固定する。
 
@@ -20,18 +20,18 @@ Chromiumが既に導入済みならブラウザのインストールは不要。
 
 | コマンド | 実行内容 |
 |---|---|
-| npm test | Nodeの40テスト。GASモック・API・画面通信・構造 |
-| npm run build | srcの24実行ファイルと.claspignoreをdistへ出力。転送・デプロイしない |
+| npm test | Nodeの46テスト。GASモック・API・画面通信・構造 |
+| npm run build | srcの30実行ファイルと.claspignoreをdistへ出力。転送・デプロイしない |
 | npm run test:browser | build後にChromiumで360px幅・読込・通信失敗・キーボード再試行を確認 |
 | npm run check | format:check → test → build → test:browser |
-| npm run preview | 127.0.0.1:4173で仮データの最小画面を表示。Ctrl+Cで終了 |
+| npm run preview | 127.0.0.1:4173で仮データのゲーム4画面と管理画面を表示。Ctrl+Cで終了 |
 | npm run format / format:check | アプリ・開発スクリプト・試験コードの整形／確認 |
 
 Makefileは上記npmコマンドのラッパーへ更新した。Windowsではnpmを直接使える。run/devはモックプレビューであり、GASそのもののローカル実行やホットリロードではない。
 
 プレビューのテストデータ・通信ブリッジはscripts/tests内にのみ置き、配布物に含めない。画面上にもローカルプレビューであることを表示する。GAS向けの実コードは設定不足・未接続時に成功を返さない。
 
-ブラウザのスクリーンショットと結果は `artifacts/scaffold-mobile.png`、`artifacts/scaffold-retry.png`、`artifacts/scaffold-browser-result.json` に出力する（Git対象外）。秘密情報や実データは使用しない。
+ブラウザのスクリーンショットと結果は `artifacts/mvp-home.png`、`artifacts/mvp-battle.png`、`artifacts/mvp-relations.png`、`artifacts/mvp-admin.png`、`artifacts/mvp-browser-result.json` に出力する（Git対象外）。秘密情報や実データは使用しない。
 
 ### ②の接続設定
 
@@ -40,19 +40,19 @@ Makefileは上記npmコマンドのラッパーへ更新した。Windowsではnp
 | Script Property | 用途 |
 |---|---|
 | JANKEN_SPREADSHEET_ID | ゲーム8表と任意のセリフ管理2表を置くブック |
-| JANKEN_DRIVE_FOLDER_ID | 廃止。現行v2の参照は撤去タスクで除去する |
+| JANKEN_DRIVE_FOLDER_ID | 廃止。新コードは参照しない |
 | GEMINI_API_KEY | 管理画面で事前生成する場合のみ必要。既存値を表示・コピーしない |
 | GEMINI_IMAGE_MODEL | 廃止。GEMINI_TEXT_MODELへコード上で流用しない |
 | JANKEN_ADMIN_EMAIL | 管理要求の利用者照合。空欄・不一致では管理操作を拒否 |
-| GEMINI_TEXT_MODEL | テキスト用モデル。新設計・未実装 |
-| JANKEN_AI_TEXT_ENABLED | 明示的trueで管理生成を許可。falseでも採用済み集は使用可能。新設計・未実装 |
+| GEMINI_TEXT_MODEL | テキスト用モデル。許可値gemini-3.1-flash-lite |
+| JANKEN_AI_TEXT_ENABLED | 明示的trueで管理生成を許可。falseでも採用済み集は使用可能。ローカル実装済み |
 
 `inspectConfiguration_()` は名前と設定有無だけを返す内部診断。値は返さず、設定の書換えもしない。外部アダプターは実装済み。設定の存在だけでは疎通成功とせず、実データで確認する。元アプリのScript ID・Deployment ID・接続設定をコピーしない。
 
 ## 実装開始前の準備
 
-1. [索引](00_index.md)、[要件](01_requirements.md)、[MVP実装計画](tasks/02_backlog/mvp-implementation.md)を読む。今回のGoal / Scope / Doneと対象ACを決める。
-2. 提供者のGoogleアカウントでGASとSheetsを準備する。画像フォルダーは新仕様では不要。試験用データはデモ用と分ける。現行setupの画像フォルダー必須処理は撤去対象。
+1. [索引](00_index.md)、[要件](01_requirements.md)、[MVP実装計画](tasks/03_active/mvp-implementation.md)を読む。今回のGoal / Scope / Doneと対象ACを決める。
+2. 提供者のGoogleアカウントでGASとSheetsを準備する。画像フォルダーは新仕様では不要。試験用データはデモ用と分ける。新setupは画像フォルダーを要求しない。
 3. [データモデル](05_data_model.md)に沿ってScript Propertiesとゲーム8シートを準備し、管理者がセリフ用2表を追加初期化する。キーや内部IDをブラウザへ渡さない。
 4. GASの初回認可・本人限定アクセスは[リリース手順](08_release_runbook.md)に従い確認する。
 5. マスター検証、純粋関数の単体確認、GAS結合確認の実行方法を整備する。環境がない試験は未実施と記録する。
@@ -90,7 +90,7 @@ Makefileは上記npmコマンドのラッパーへ更新した。Windowsではnp
 
 実装後、試験用コピーの管理画面で仲間と想定勝敗を選び事前生成する。下書き確認→採用→公開→ゲーム再読込の順を検証する。管理要求の重複防止、日次20試行、429で当日停止、自動再試行なしを確認する。
 
-プレイ中は採用済み文または定型文を即表示し、生成もセリフ取得も行わない。管理者設定・任意の管理2表・旧8表の復元互換性は[設計](specs/ai-battle-dialogue.md)に従う。新管理画面は未実装。
+プレイ中は採用済み文または定型文を即表示し、生成もセリフ取得も行わない。管理者設定・任意の管理2表・旧8表の復元互換性は[設計](specs/ai-battle-dialogue.md)に従う。新管理画面はローカル実装・模擬疎通済み。実生成は未確認。
 ## 日々の作業と検証記録
 
 1. [タスク一覧](tasks/README.md)から作業を選び、Scope / Plan / Acceptance Criteriaを明記する。中規模以上の実装は責務・IF・テスト方針を先に固定する。
@@ -103,7 +103,7 @@ Makefileは上記npmコマンドのラッパーへ更新した。Windowsではnp
 
 ### ③の管理コマンドと画像処理の廃止
 
-旧scripts/convert-webp.mjsは撤去対象。画像制作・アップロード・登録を新しいセットアップ手順に含めない。
+旧scripts/convert-webp.mjsは撤去済み。画像制作・アップロード・登録を新しいセットアップ手順に含めない。
 
 `npm run build` 後の `node scripts/operator.mjs backup` は検証済みバックアップ、`restore BACKUP_ID` は別コピーへの復元検証、`verify` は試験用コピーだけに決定的な1行を追記して再送・バックアップ・復元を確認するエディタ専用ビルドを作る。verifyはコピー3冊を作り、元の接続先やActionsを変えない。200件に達した元データでは追加試験できない。
 

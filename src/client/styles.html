@@ -46,14 +46,7 @@
     margin: 12px 0 0;
     font-weight: 600;
   }
-  .companion-image {
-    display: block;
-    width: 192px;
-    max-width: 100%;
-    height: auto;
-    margin-top: 16px;
-    border-radius: 16px;
-  }
+
   button {
     min-height: 48px;
     min-width: 48px;
@@ -77,5 +70,171 @@
   }
   [hidden] {
     display: none !important;
+  }
+  nav {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 20px 0;
+  }
+  nav button {
+    flex: 1 1 40%;
+    margin: 0;
+    padding: 10px;
+    font-size: 16px;
+  }
+  [aria-current="page"] {
+    background: #a4511c;
+  }
+  .score {
+    font-size: 1.35rem;
+    font-weight: 700;
+    margin: 12px 0;
+  }
+  .hint {
+    display: block;
+    color: #526563;
+    font-size: 1rem;
+  }
+  .card {
+    display: grid;
+    gap: 8px;
+    padding: 18px;
+    margin: 16px 0;
+    border: 1px solid #c8d5c0;
+    border-radius: 16px;
+    background: #f8faf5;
+  }
+  .shape {
+    display: block;
+    width: 54px;
+    height: 54px;
+    margin: 8px;
+    border: 3px solid #243f40;
+  }
+  .C01 {
+    background: #f4aa61;
+    border-radius: 75% 0 60% 50%;
+    transform: rotate(-35deg);
+  }
+  .C02 {
+    background: #8ecbdb;
+    border-radius: 0 60% 60% 60%;
+    transform: rotate(45deg);
+  }
+  .C03 {
+    background: #b0cf84;
+    border-radius: 0 85%;
+    transform: rotate(-20deg);
+  }
+  fieldset {
+    border: 1px solid #c8d5c0;
+    border-radius: 12px;
+    margin: 20px 0;
+    padding: 12px;
+    min-width: 0;
+  }
+  .skill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 48px;
+    padding: 6px 0;
+  }
+  input[type="radio"],
+  input[type="checkbox"] {
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    accent-color: #245b4c;
+  }
+  select {
+    font: inherit;
+    min-height: 48px;
+    max-width: 100%;
+    padding: 8px;
+    border: 1px solid #526563;
+    border-radius: 8px;
+  }
+  .hands {
+    display: flex;
+    gap: 8px;
+  }
+  .hands button {
+    flex: 1;
+    padding: 10px 4px;
+    margin: 0;
+  }
+  dialog {
+    max-width: min(480px, 90vw);
+    width: 100%;
+    border: 1px solid #c8d5c0;
+    border-radius: 20px;
+    padding: 24px;
+    color: inherit;
+  }
+  dialog::backdrop {
+    background: #142c3199;
+  }
+  .bubble {
+    padding: 16px;
+    background: #eff5e6;
+    border-radius: 16px;
+    font-weight: 600;
+    overflow-wrap: anywhere;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    table-layout: fixed;
+  }
+  th,
+  td {
+    padding: 4px;
+    text-align: center;
+    border-bottom: 1px solid #c8d5c0;
+    overflow-wrap: anywhere;
+  }
+  th button {
+    padding: 4px;
+    margin: 0;
+    width: 100%;
+    min-width: 44px;
+  }
+  td.highlight {
+    background: #fff0bb;
+    font-weight: 700;
+  }
+  .notice {
+    border-left: 4px solid #a4511c;
+    padding: 12px;
+  }
+  button.secondary {
+    background: #e2ebdf;
+    color: #243f40;
+  }
+  #admin-slots .card button {
+    margin-top: 8px;
+  }
+  #admin-slots label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 44px;
+  }
+  @media (max-width: 400px) {
+    main {
+      padding: 24px 12px;
+    }
+    .panel {
+      padding: 16px;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    * {
+      animation: none !important;
+      transition: none !important;
+      scroll-behavior: auto !important;
+    }
   }
 </style>

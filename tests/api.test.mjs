@@ -18,7 +18,7 @@ test("bootstrap keeps the full contract and never includes settings", () => {
   assert.equal(JSON.stringify(response).includes("PRIVATE_KEY"), false);
 });
 
-test("mutation metadata is preserved, asset version stays inside data", () => {
+test("mutation metadata is preserved; removed asset endpoint is rejected", () => {
   const gas = createGas({
     services: {
       drawCharacter: () => ({
@@ -41,9 +41,8 @@ test("mutation metadata is preserved, asset version stays inside data", () => {
   assert.equal(result.version, 1);
   assert.equal(result.replayed, true);
   const asset = gas.call({ op: "getAsset", payload: { assetId: "A_C01" } });
-  assert.equal(asset.ok, true);
-  assert.equal(Object.hasOwn(asset, "version"), false);
-  assert.equal(asset.data.version, 2);
+  assert.equal(asset.ok, false);
+  assert.equal(asset.error.code, "INVALID_ARGUMENT");
 });
 
 test("invalid contracts are rejected before creating external services", () => {
@@ -89,14 +88,12 @@ test("invalid contracts are rejected before creating external services", () => {
   }
 });
 
-test("all six valid operation shapes route to their intended service", () => {
+test("all four valid operation shapes route to their intended service", () => {
   const requests = [
     { op: "bootstrap", payload: {} },
     { op: "getRelations", payload: {} },
-    { op: "getAsset", payload: { assetId: "A_C01" } },
     mutation(),
     mutation("playRound", { characterId: "C01", skillId: "S01", hand: "rock" }),
-    mutation("synthesize", { ingredientSkillIds: ["S02", "S01"] }),
   ];
   const calls = [];
   const services = Object.fromEntries(

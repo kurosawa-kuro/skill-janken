@@ -7,14 +7,22 @@ function verifiedDatabaseCopy_(sourceId, label) {
   if (!isPrivateOwned_(source)) throw new AppError_("DATA_INTEGRITY_ERROR");
   const book = SpreadsheetApp.openById(sourceId);
   const before = readSnapshot_(book);
-  const digest = payloadHash_(before.tables);
+  readDialogue_(book);
+  const digest = payloadHash_({
+    game: before.tables,
+    dialogue: dialogueRaw_(book),
+  });
   const copy = book.copy(
     `skill-janken-lab-${label}-${new Date().toISOString().replace(/[:.]/g, "-")}`,
   );
   if (!isPrivateOwned_(DriveApp.getFileById(copy.getId())))
     throw new AppError_("DATA_INTEGRITY_ERROR");
   const after = readSnapshot_(copy);
-  if (payloadHash_(after.tables) !== digest)
+  readDialogue_(copy);
+  if (
+    payloadHash_({ game: after.tables, dialogue: dialogueRaw_(copy) }) !==
+    digest
+  )
     throw new AppError_("DATA_INTEGRITY_ERROR");
   return {
     spreadsheetId: copy.getId(),

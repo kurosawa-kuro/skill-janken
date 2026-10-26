@@ -10,4 +10,4 @@
 
 保存の列と状態JSONの形は保ちschemaVersion=1、新規マスターはmasterVersion=2とする。旧masterVersion=1の4スキル・9適性・R01・SYNTHESIS・記録内のポイントは旧ルールで読み取り／バックアップ照合する。過去のハッシュ・行・数値を修正しない。新ゲームは新規ブックで開始し、旧ブックを自動上書き・自動変換・自動接続切替しない。旧版を接続した新アプリではゲーム変更を停止して提供者へ案内する。具体的な新規作成・切替は実装検証時の明示操作とする。
 
-今回の変更は文書のみ。旧コード・Google上のデータ・デプロイは未変更。現行仕様は[要件](../01_requirements.md)・[ドメイン](../03_domain_model.md)・[データ](../05_data_model.md)、作業は[MVP実装](../tasks/02_backlog/mvp-implementation.md)・[画像撤去と事前生成セリフ](../tasks/02_backlog/ai-battle-dialogue.md)に反映する。
+今回の変更は文書のみ。旧コード・Google上のデータ・デプロイは未変更。現行仕様は[要件](../01_requirements.md)・[ドメイン](../03_domain_model.md)・[データ](../05_data_model.md)、作業は[MVP実装](../tasks/03_active/mvp-implementation.md)・[画像撤去と事前生成セリフ](../tasks/03_active/ai-battle-dialogue.md)に反映する。

@@ -9,29 +9,43 @@
     <main aria-labelledby="title">
       <p class="eyebrow">あつめる・ためす・つながる</p>
       <h1 id="title">スキルじゃんけんラボ</h1>
-      <p class="intro">なかまとスキルの、たんけんをはじめよう。</p>
+      <p class="intro">なかまと、きょうのひらめきを見つけよう。</p>
       <section
+        id="panel"
         class="panel"
         aria-label="たんけんのきろく"
         aria-busy="true"
-        id="panel"
       >
         <p id="status" role="status" aria-live="polite">
           きろくをよんでいるよ…
         </p>
         <div id="summary" hidden></div>
-        <div id="companion" hidden></div>
-        <button type="button" id="retry" hidden>もういちどよむ</button>
-        <button type="button" id="resend" hidden>
-          つづきのきろくをかくにん
-        </button>
+        <button id="retry" hidden>もういちどよむ</button
+        ><button id="resend" hidden>つづきのきろくをかくにん</button>
       </section>
+      <nav id="navigation" aria-label="あそぶばしょ" hidden>
+        <button data-view="home">ホーム</button
+        ><button data-view="friends">なかま</button
+        ><button data-view="battle">じゃんけん</button
+        ><button data-view="relations">つながり</button>
+      </nav>
+      <section
+        id="view"
+        class="panel"
+        hidden
+        aria-labelledby="view-title"
+      ></section>
+      <dialog id="result" aria-labelledby="result-title">
+        <h2 id="result-title">けっか</h2>
+        <div id="result-body"></div>
+        <button id="result-close">つづける</button>
+      </dialog>
     </main>
     <script>
       window.CONFIG = <?!= serializeForScript_(config) ?>;
     </script>
-    <?!= include_("client/core/dom") ?> <?!= include_("client/core/api") ?> <?!=
-    include_("client/core/pending") ?> <?!= include_("client/core/assets") ?>
-    <?!= include_("client/app") ?>
+    <?!= include_("client/core/dom") ?><?!= include_("client/core/api") ?><?!=
+    include_("client/core/pending") ?><?!= include_("client/core/dialogue")
+    ?><?!= include_("client/app") ?>
   </body>
 </html>

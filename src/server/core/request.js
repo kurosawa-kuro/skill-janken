@@ -35,9 +35,7 @@ function validateRequest_(request) {
       bootstrap: [],
       drawCharacter: [],
       playRound: ["characterId", "skillId", "hand"],
-      synthesize: ["ingredientSkillIds"],
       getRelations: [],
-      getAsset: ["assetId"],
     };
     if (
       !request ||
@@ -46,41 +44,30 @@ function validateRequest_(request) {
     ) {
       throw new AppError_("INVALID_ARGUMENT");
     }
-    const mutation = ["drawCharacter", "playRound", "synthesize"].includes(
-      request.op,
-    );
+    const mutation = ["drawCharacter", "playRound"].includes(request.op);
     requireObjectKeys_(
       request,
       mutation
-        ? ["op", "requestId", "expectedVersion", "payload"]
+        ? ["op", "requestId", "expectedVersion", "datasetId", "payload"]
         : ["op", "payload"],
     );
     requireObjectKeys_(request.payload, payloadKeys[request.op]);
     if (
       mutation &&
       (!isUuid_(request.requestId) ||
+        typeof request.datasetId !== "string" ||
+        !/^[a-f0-9]{64}$/.test(request.datasetId) ||
         !Number.isSafeInteger(request.expectedVersion) ||
         request.expectedVersion < 0)
     ) {
       throw new AppError_("INVALID_ARGUMENT");
     }
     const payload = request.payload;
-    if (request.op === "getAsset" && !isId_(payload.assetId))
-      throw new AppError_("INVALID_ARGUMENT");
     if (
       request.op === "playRound" &&
       (!isId_(payload.characterId) ||
         !isId_(payload.skillId) ||
         !["rock", "scissors", "paper"].includes(payload.hand))
-    ) {
-      throw new AppError_("INVALID_ARGUMENT");
-    }
-    if (
-      request.op === "synthesize" &&
-      (!Array.isArray(payload.ingredientSkillIds) ||
-        payload.ingredientSkillIds.length !== 2 ||
-        !payload.ingredientSkillIds.every(isId_) ||
-        payload.ingredientSkillIds[0] === payload.ingredientSkillIds[1])
     ) {
       throw new AppError_("INVALID_ARGUMENT");
     }

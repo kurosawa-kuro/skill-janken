@@ -33,8 +33,12 @@ function payloadHash_(value) {
 function normalizedInput_(request) {
   if (!validateRequest_(request)) throw new AppError_("INVALID_ARGUMENT");
   const payload = JSON.parse(JSON.stringify(request.payload));
-  if (request.op === "synthesize") payload.ingredientSkillIds.sort();
-  return { op: request.op, expectedVersion: request.expectedVersion, payload };
+  return {
+    op: request.op,
+    expectedVersion: request.expectedVersion,
+    datasetId: request.datasetId,
+    payload,
+  };
 }
 
 function jsonCell_(value) {

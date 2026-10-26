@@ -67,8 +67,8 @@
 
 | ファイル | 用途 |
 |---|---|
-| [02_backlog/mvp-implementation.md](02_backlog/mvp-implementation.md) | MVP全体の親タスク。基盤3段階の進行と、後続のゲーム実装・最終受入 |
-| [画像機能の撤去とAIセリフ](02_backlog/ai-battle-dialogue.md) | 次の実装。画像生成を廃止し、画像なしカード、管理画面での事前生成・採用、ゲームでの読込済み文の表示を実装する |
+| [02_backlog/mvp-implementation.md](03_active/mvp-implementation.md) | MVP全体の親タスク。基盤3段階の進行と、後続のゲーム実装・最終受入 |
+| [画像機能の撤去とAIセリフ](03_active/ai-battle-dialogue.md) | 次の実装。画像生成を廃止し、画像なしカード、管理画面での事前生成・採用、ゲームでの読込済み文の表示を実装する |
 | [③ 土台拡張](03_active/foundation-03-hardening.md) | 保存・再送・復元の証跡。旧画像生成条件は廃止、新機能は別タスク |
 
 ## アイディア
@@ -87,7 +87,7 @@
 
 合成廃止も[ADR 0003](../adr/0003-remove-synthesis.md)へ反映済み。基本3スキル・適性6行・ゲーム4画面・累計スコアに変更し、旧データは保管する。
 
-次の実装は[画像機能撤去・AIセリフ](02_backlog/ai-battle-dialogue.md)をゲームルール・結果画面と接続する。画像生成の成功を待たない。既存②③の未確認は消さず、仕様変更と試験合格を区別する。
+次の実装は[画像機能撤去・AIセリフ](03_active/ai-battle-dialogue.md)をゲームルール・結果画面と接続する。画像生成の成功を待たない。既存②③の未確認は消さず、仕様変更と試験合格を区別する。
 
 ## 完了
 
@@ -119,4 +119,8 @@
 ## Notes
 ```
 
-進行中の実装作業は[③ 土台拡張](03_active/foundation-03-hardening.md)。外部確認待ちは[② 連携疎通](03_active/foundation-02-integration.md)、全体計画は[MVP親タスク](02_backlog/mvp-implementation.md)、既存のクリーンアップ候補は[03_active/refactoring-candidates.md](03_active/refactoring-candidates.md)で管理する。
+進行中の実装作業は[③ 土台拡張](03_active/foundation-03-hardening.md)。外部確認待ちは[② 連携疎通](03_active/foundation-02-integration.md)、全体計画は[MVP親タスク](03_active/mvp-implementation.md)、既存のクリーンアップ候補は[03_active/refactoring-candidates.md](03_active/refactoring-candidates.md)で管理する。
+
+## 2026-10-26 現行実装
+
+ゲーム・管理画面のローカル実装と46テスト・Chromium確認は完了。[配置・最終受入](03_active/mvp-release-verification.md)が残る。実環境を未確認のままdoneへ移動しない。

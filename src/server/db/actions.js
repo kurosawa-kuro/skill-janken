@@ -34,95 +34,28 @@ function validateState_(state, version) {
   }
 }
 
-// Validate stored outcomes, never draw new random values while reading/replaying.
-// GameService will create outcomes later; its writes must pass this same boundary.
+// Replay validates outcomes without drawing randomness.
 function validateStoredTransition_(previous, input, result, state, tables) {
+  if (masterVersion_(tables) === 1)
+    return validateLegacyTransition_(previous, input, result, state, tables);
   validateState_(state, previous.version + 1);
-  const expected = JSON.parse(JSON.stringify(previous));
-  expected.version++;
-  const p = input.payload;
-  if (input.op === "drawCharacter") {
-    requireObjectKeys_(result, ["characterId", "candidateCount"]);
-    const candidates = tables.Characters.filter(
-      (c) => c.active && !previous.ownedCharacterIds.includes(c.characterId),
-    );
-    if (
-      result.candidateCount !== candidates.length ||
-      !candidates.some((c) => c.characterId === result.characterId)
-    )
-      throw Error();
-    expected.ownedCharacterIds.push(result.characterId);
-    expected.ownedCharacterIds.sort();
-  } else if (input.op === "playRound") {
-    requireObjectKeys_(result, [
-      "characterId",
-      "skillId",
-      "playerHand",
-      "cpuHand",
-      "outcome",
-      "basePoints",
-      "bonusPoints",
-      "earnedPoints",
-    ]);
-    const skill = tables.Skills.find(
-      (s) => s.skillId === p.skillId && s.active,
-    );
-    if (
-      !previous.ownedCharacterIds.includes(p.characterId) ||
-      !previous.unlockedSkillIds.includes(p.skillId) ||
-      !skill ||
-      !tables.CharacterSkills.some(
-        (r) => r.characterId === p.characterId && r.skillId === p.skillId,
-      ) ||
-      result.characterId !== p.characterId ||
-      result.skillId !== p.skillId ||
-      result.playerHand !== p.hand ||
-      !["rock", "scissors", "paper"].includes(result.cpuHand)
-    )
-      throw Error();
-    const beats = { rock: "scissors", scissors: "paper", paper: "rock" };
-    const outcome =
-      p.hand === result.cpuHand
-        ? "DRAW"
-        : beats[p.hand] === result.cpuHand
-          ? "WIN"
-          : "LOSE";
-    const base = outcome === "WIN" ? 2 : 1;
-    const bonus =
-      skill.effectCode === "ALWAYS_BONUS" ||
-      skill.effectCode === outcome + "_BONUS"
-        ? skill.bonus
-        : 0;
-    if (
-      result.outcome !== outcome ||
-      result.basePoints !== base ||
-      result.bonusPoints !== bonus ||
-      result.earnedPoints !== base + bonus
-    )
-      throw Error();
-    expected.points += result.earnedPoints;
-  } else if (input.op === "synthesize") {
-    requireObjectKeys_(result, ["recipeId", "unlockedSkillId", "spentPoints"]);
-    const recipe = tables.Recipes.find(
-      (r) => r.active && r.pairKey === p.ingredientSkillIds.join("|"),
-    );
-    if (
-      !recipe ||
-      p.ingredientSkillIds.some(
-        (id) => !previous.unlockedSkillIds.includes(id),
-      ) ||
-      previous.unlockedSkillIds.includes(recipe.resultSkillId) ||
-      previous.points < recipe.cost ||
-      result.recipeId !== recipe.recipeId ||
-      result.unlockedSkillId !== recipe.resultSkillId ||
-      result.spentPoints !== recipe.cost
-    )
-      throw Error();
-    expected.points -= recipe.cost;
-    expected.unlockedSkillIds.push(recipe.resultSkillId);
-    expected.unlockedSkillIds.sort();
-  } else throw Error();
-  if (canonicalJson_(expected) !== canonicalJson_(state)) throw Error();
+  if (
+    canonicalJson_(state.unlockedSkillIds) !==
+    canonicalJson_(["S01", "S02", "S03"])
+  )
+    throw Error();
+  const expected = produceGameChange_(
+    input.op,
+    JSON.parse(JSON.stringify(previous)),
+    input.payload,
+    tables,
+    result,
+  );
+  if (
+    canonicalJson_(expected.result) !== canonicalJson_(result) ||
+    canonicalJson_(expected.state) !== canonicalJson_(state)
+  )
+    throw Error();
 }
 
 function validateActions_(
@@ -146,14 +79,16 @@ function validateActions_(
         row.playerId !== "P001" ||
         row.seq !== state.version + 1 ||
         row.schemaVersion !== 1 ||
-        row.masterVersion !== 1 ||
+        row.masterVersion !== masterVersion_(tables) ||
         !isUtcDate_(row.createdAt)
       )
         throw Error();
       const input = parseCell_(row.inputJson),
         result = parseCell_(row.resultJson),
         next = parseCell_(row.stateJson);
-      const normalized = normalizedInput_({
+      const normalized = (
+        masterVersion_(tables) === 1 ? normalizedLegacyInput_ : normalizedInput_
+      )({
         ...input,
         requestId: row.requestId,
       });
@@ -177,8 +112,7 @@ function validateActions_(
   }
 }
 
-// The injected producer is server-side only. Public mutation routes stay disabled
-// until GameService supplies real transitions; tests do not add public operations.
+// The producer is server-side only; public requests cannot choose outcomes.
 function commitAction_(
   request,
   produce,
@@ -190,6 +124,10 @@ function commitAction_(
   return withLock_(() => {
     book = book || SpreadsheetApp.openById(repositorySettings_().spreadsheetId);
     const before = readSnapshot_(book, validateTransition);
+    if (before.data.masterVersion !== 2)
+      throw new AppError_("LEGACY_DATA_READ_ONLY");
+    if (request.datasetId !== payloadHash_(book.getId()))
+      throw new AppError_("DATASET_MISMATCH");
     const saved = before.actions.find(
       (row) => row.requestId.toLowerCase() === request.requestId.toLowerCase(),
     );
@@ -222,7 +160,7 @@ function commitAction_(
       stateJson: jsonCell_(change.state),
       createdAt: new Date().toISOString(),
       schemaVersion: 1,
-      masterVersion: 1,
+      masterVersion: 2,
     };
     validateActions_(
       { ...before.tables, Actions: [...before.tables.Actions, row] },

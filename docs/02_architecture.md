@@ -2,7 +2,7 @@
 
 反映日：2026年10月26日。初期資料（退避済み）：[01_企画書.md](archive/スキルじゃんけんラボ_企画・仕様・設計/01_企画書.md)・[02_仕様書.md](archive/スキルじゃんけんラボ_企画・仕様・設計/02_仕様書.md)・[03_設計基礎書.md](archive/スキルじゃんけんラボ_企画・仕様・設計/03_設計基礎書.md)（v1.0）。
 
-本書は提案仕様をプロジェクト用に整理した設計文書。アプリ実装・受入試験・公開は未完了であり、実績や試験合格を示さない。参照元と本書の役割・更新規約は[索引](00_index.md)を参照。
+本書は現行仕様を定義する。ローカル実装・検証済み範囲と未完了の実環境確認は[最新記録](tasks/03_active/mvp-release-verification.md)および[テスト戦略](07_test_strategy.md)で区別する。参照元と本書の役割・更新規約は[索引](00_index.md)を参照。
 
 ## 技術の役割
 
@@ -38,27 +38,24 @@ flowchart LR
 
 ## 実装ファイルの責務
 
-下表は現行Web v2の実装棚卸し。画像関連の行は継続採用の意味ではなく撤去対象である。新設計のサービス境界と入力・回数管理は[AIセリフ設計](specs/ai-battle-dialogue.md)、ファイル単位の変更は[実装タスク](tasks/02_backlog/ai-battle-dialogue.md)を参照する。
+以下はローカル実装。実GASは旧Web v2のまま。
 
-| 実ファイル／後続の責務 | 責務 |
+| 実ファイル | 責務 |
 |---|---|
-| src/server/controllers/web.js・api.js | doGet/include_、公開api、共通応答。実装済み |
-| src/server/core/request.js・errors.js・settings.js | 6操作の入力検証、安全なエラー、Script Properties読込。実装済み |
-| src/server/application/services.js | 読取りサービスへの配線。GameServiceの抽選・対戦は後続実装。旧合成の枠は撤去対象 |
-| Rules（後続） | 勝敗、得点、抽選の副作用のない関数 |
-| src/server/adapters/external.js | Repository・Assets・Geminiの実アダプターへの配線。設定不足時はエラーで停止 |
-| src/server/controllers/admin.js・core/lock.js | 新規8表作成、排他、WebP登録。設定済みブックを上書きしない。controllers/backup.jsは別ブックへの検証付きコピー・復元 |
-| src/server/db/schema.js・repository.js | 型・ヘッダー・初期マスターを検証し公開項目だけ返す。全Actionsを検証し最新stateを復元。db/actions.jsでロック内の追記・再送・上限判定を実装 |
-| src/server/services/assets.js・gemini.js | 非公開所有確認、WebP寸法・容量検証、画像パート抽出、生成元のDRAFT保存 |
-| src/client/index.html・styles.html | 読込・初期記録・失敗・再試行の最小画面。4画面は後続 |
-| src/client/core/dom.html・api.html・app.html | DOM、安全な文字表示、全応答を保持するRPC、初期読込と所有仲間1枚の画像取得・失敗時の名前表示。core/pending.htmlは送信前保存・手動再送・最新化、core/assets.htmlは版別メモリキャッシュ。ゲームの結果演出は後続 |
-| scripts/・tests/ | ローカルビルド・プレビュー・GASモック・ブラウザ検証。GAS配置には含めない |
+| controllers/web.js・api.js | ゲーム4操作とHTML配信 |
+| controllers/dialogue-admin.js・core/access.js | 管理APIと実利用者の認可、非公開所有確認 |
+| application/services.js・services/game.js | 抽選・勝敗・加算と保存の配線 |
+| adapters/external.js | bootstrap・関係情報・採用集の読取 |
+| db/schema.js・repository.js・actions.js | 新マスター版2・全行検証・追記・再送・上限 |
+| db/legacy.js | 旧版1の保管・バックアップ用検証。旧操作を公開しない |
+| controllers/admin.js・backup.js | 新規ブック作成、検証付きバックアップ・切替 |
+| services/dialogue.js・gemini.js | 下書き・公開版・生成予約・回数制限・テキストAPI |
+| client/index.html・app.html・styles.html | ゲーム4画面、結果、学習表示 |
+| client/core/pending.html・dialogue.html | データセット別保留、手動再送、セリフのローカル選択 |
+| client/admin.html・admin-app.html | 候補生成・確認・選択・公開・解除 |
+| scripts/・tests/ | 配布しない開発・検証コード |
 
-内部・管理関数は末尾 `_` を付け、画面から呼ぶ公開関数は `api` に集約する。末尾 `_` の関数は `google.script.run` から呼び出せない。ただし、これは公開範囲の設定や入力検証の代替ではない。[公式通信ガイド](https://developers.google.com/apps-script/guides/html/communication)。
-
-2026-10-26、①土台作成として上記の最小構成を実装した。コピー元に合わせてGASサーバーを通常のJavaScriptファイルに分割し、GAS上では同じ大域で実行する。Node側のscripts/testsはES modulesを使用する。トップレベルで別ファイルの初期化順に依存しない。
-
-`npm run build` は明示的な許可リストにある13実行ファイルと.claspignoreだけをdistへ出力する。配置先・認可・claspによる転送は②で設定し、現時点ではアップロードしない。実サービスが未接続の配布物は初期状態を偽装せずエラーになり、ローカルプレビューだけがtestsの仮データを利用する。
+公開関数はdoGet・api・adminApiのみ。内部は末尾 `_`。管理入口はすべて実利用者認可を行う。GASは同じ大域で実行し、トップレベルの初期化順に依存しない。buildは30実行ファイルと.claspignoreをdistへ出力するだけで、デプロイしない。
 
 ## Golden Pathと構成要素
 
@@ -72,7 +69,7 @@ flowchart LR
 | 4 | 学習表示 | Client / Repository、getRelations | Players→Actions、3体×3種・適性6行 | 実データと一致しなければ未達 |
 | 5 | 再開 | Client / Repository、保留要求解決→bootstrap | sessionStorageとSheets最新状態 | 再送結果で最新画面を巻き戻さない |
 
-画像配信getAssetは撤去対象。新仕様は画像ファイルを必要とせず、GAS・Sheets・認証がゲームの中核依存となる。テキストAIは演出に使い、生成失敗が保存や次の操作を妨げない。
+画像配信getAssetは撤去済み。新仕様は画像ファイルを必要とせず、GAS・Sheets・認証がゲームの中核依存となる。テキストAIは演出に使い、生成失敗が保存や次の操作を妨げない。
 
 ## 通信操作と状態変更
 
@@ -85,7 +82,7 @@ flowchart LR
 | playRound | 1回のじゃんけん | ポイント加算 |
 | getRelations | 学習用の関係と最新記録取得 | なし |
 
-変更要求には一意の `requestId` と画面が読んだ `expectedVersion` を付ける。同じ要求を再送すると保存済みの結果を返し、二重に適用しない。別の操作で状態が進んでいたら更新競合として再読込を案内する。
+変更要求には一意の `requestId`、画面が読んだ `expectedVersion`、bootstrapで取得した `datasetId`（64桁の小文字16進数）を付ける。例のdatasetIdは説明用で、実値はbootstrapから取得する。同じ要求を再送すると保存済みの結果を返し、二重に適用しない。別の操作で状態が進んでいたら更新競合として再読込を案内する。
 
 ## API契約
 
@@ -100,6 +97,7 @@ flowchart LR
   "op": "playRound",
   "requestId": "68bc9177-bae2-4b17-ae17-b2cabf5cdf72",
   "expectedVersion": 2,
+  "datasetId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "payload": {
     "characterId": "C01",
     "skillId": "S01",
@@ -174,7 +172,7 @@ recentActionsは `{actionId,type,createdAt,result}` の配列で新しい順。p
 
 playerIdはクライアントから受け取らず、初版サーバー内でP001と決める。未知のop、未知のキー、必要項目不足を拒否する。変更要求全体は4KB以下、IDは英数字・`_`・`-`の32文字以内、requestIdはUUID形式に限定する。
 
-①土台作成時点の共通入口では、読取り要求を `{op,payload}`、変更要求を `{op,requestId,expectedVersion,payload}` として検証する。requestIdはUUIDの版1〜8・標準variant、expectedVersionは0以上の安全な整数。要求サイズはJSON.stringify後のUTF-8バイト数で4096以下とする。6操作の入力形式は実装済みだが、実データ読込・ゲーム処理の合格を意味しない。
+現行共通入口では、読取り要求を `{op,payload}`、変更要求を `{op,requestId,expectedVersion,datasetId,payload}` として検証する。requestIdはUUIDの版1〜8・標準variant、expectedVersionは0以上の安全な整数。要求サイズはJSON.stringify後のUTF-8で4096バイト以下。ゲーム4操作を実装・ローカル検証済み。
 
 ## 保存・実行境界
 
@@ -199,10 +197,14 @@ playerIdはクライアントから受け取らず、初版サーバー内でP00
 
 ## 開発ガイドとの関係
 
-共通作業方針は[AGENTS.md](../AGENTS.md)、Claude Code固有の手順は[CLAUDE.md](../CLAUDE.md)を参照する。構造・IFの変更は[MVP実装計画](tasks/02_backlog/mvp-implementation.md)等でScopeと検証方法を決め、確定した判断を本書または `docs/adr/` に残す。
+共通作業方針は[AGENTS.md](../AGENTS.md)、Claude Code固有の手順は[CLAUDE.md](../CLAUDE.md)を参照する。構造・IFの変更は[MVP実装計画](tasks/03_active/mvp-implementation.md)等でScopeと検証方法を決め、確定した判断を本書または `docs/adr/` に残す。
 
 ### ゲーム実装へ渡す境界（③）
 
 `commitAction_(request, produce, book?)` は入力検証→ScriptLock→全表読込→requestId→version→200件上限の順に判定し、初回だけ `produce(state, normalizedPayload, tables)` を呼ぶ。戻り値は `{result,state}`。Actionsの保存済み結果と状態差分の検証は `validateStoredTransition_` が行い、乱数は引かない。後続GameServiceは所有・初期習得・適性・手等の業務エラーを判定して実結果を生成し、この境界へ接続する。ゲーム2操作の公開サービスは現時点で停止するため、疎通用加点APIは存在しない。
 
 クライアントは `App.commands.start(op,payload,expectedVersion)`（現行コードの境界。新実装ではbootstrapで取得するdatasetIdとmasterVersionによる保留要求の隔離を追加）、`retry()`、`sync()` を使用する。startはbootstrap同期後のみ許可し、保留中・通信中・保存領域利用不可・未同期は変更ボタンを無効にする。retryは当該操作の結果と最新bootstrapを分けて返す。演出は保存成功を確認してから行う。
+
+### 管理APIの実装契約
+
+管理画面はWebアプリURLの `?view=admin`。adminApiは `{op,payload}`、4096 UTF-8バイト以下。listのpayloadは空。initializeはdatasetId。generateはdatasetId・requestId（UUID）・slotKey（C01_WIN等）・draftRevision。publishはdatasetId・slotKey・draftRevision・expectedVersion（公開版）・selectedIndices（下書きの0始まりの添字、空配列で採用解除）。全要求で実利用者を認可し、ゲーム版2・保存先を検証する。成功dataはinitialized・drafts・catalog・datasetId、生成ではstatus（generated / failed / unknown）を追加する。任意文・自由プロンプトは受け付けない。

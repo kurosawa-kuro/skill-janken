@@ -2,7 +2,7 @@
 
 反映日：2026年10月26日。初期資料（退避済み）：[03_設計基礎書.md](archive/スキルじゃんけんラボ_企画・仕様・設計/03_設計基礎書.md)・[02_仕様書.md](archive/スキルじゃんけんラボ_企画・仕様・設計/02_仕様書.md)（v1.0）。
 
-本書は提案仕様をプロジェクト用に整理した設計文書。アプリ実装・受入試験・公開は未完了であり、実績や試験合格を示さない。参照元と本書の役割・更新規約は[索引](00_index.md)を参照。
+本書は現行仕様を定義する。ローカル実装・検証済み範囲と未完了の実環境確認は[最新記録](tasks/03_active/mvp-release-verification.md)および[テスト戦略](07_test_strategy.md)で区別する。参照元と本書の役割・更新規約は[索引](00_index.md)を参照。
 
 ## 設定の置き場所
 
@@ -16,7 +16,7 @@
 | 選択中の仲間・スキル | 端末内の表示状態。各対戦要求で送信し、サーバーで検証 |
 | ローカル開発用設定 | 既存env/・doppler.yamlはひな形。GASへの同期は未実装。秘密情報はコミットしない |
 
-①土台作成で設定読込名を `JANKEN_SPREADSHEET_ID` / `JANKEN_DRIVE_FOLDER_ID` / `GEMINI_API_KEY` / `GEMINI_IMAGE_MODEL` と定義した。②で新規8表の作成・初期マスター検証・読取とAssets登録を実装した。初期化済みブックは検証のみで上書きしない。③で全Actionsの検証・追記・最新状態復元・同一要求の再送を実装した。0件時だけ初期状態を使い、不正行があればDATA_INTEGRITY_ERRORで停止する。ゲーム固有の操作生成・画面は後続。
+①土台作成で設定読込名を `JANKEN_SPREADSHEET_ID` / `JANKEN_DRIVE_FOLDER_ID` / `GEMINI_API_KEY` / `GEMINI_IMAGE_MODEL` と定義した。②で新規8表の作成・初期マスター検証・読取とAssets登録を実装した。初期化済みブックは検証のみで上書きしない。③で全Actionsの検証・追記・最新状態復元・同一要求の再送を実装した。0件時だけ初期状態を使い、不正行があればDATA_INTEGRITY_ERRORで停止する。ゲーム固有の操作生成・画面もローカル実装済み。
 
 ## 保存方針
 
@@ -109,7 +109,7 @@ erDiagram
 1. 入力の型・サイズ・操作名を検証する。
 2. ScriptLock.tryLock(3000) が失敗したら BUSY。
 3. ロック内でマスター、Players、Actionsを読み直し、全行の整合性を検証。
-4. requestIdが既存ならpayloadHashを比較する。
+4. masterVersion=2とdatasetIdを検証し、不一致では書込しない。requestIdが既存ならpayloadHashを比較する。
    一致 → 保存済みresult/stateを返す（replayed=true）。
    不一致 → REQUEST_ID_CONFLICT。
 5. 最新versionとexpectedVersionを比較。不一致ならVERSION_CONFLICT。
@@ -121,7 +121,7 @@ erDiagram
 11. resultとstateを返す。finallyでロックを解放する。
 ```
 
-payloadHashは `op + expectedVersion + 正規化payload` の安定したJSON表現に対するSHA-256。新規操作には材料配列が存在しない。クライアントが送るハッシュを信用しない。再送時は既存要求の検索をversion・件数上限より先に行う。
+payloadHashは `{op,expectedVersion,datasetId,payload}` の安定したJSON表現に対するSHA-256。新規操作には材料配列が存在しない。クライアントが送るハッシュを信用しない。再送時は既存要求の検索をversion・件数上限より先に行う。
 
 新規masterVersion=2の行動typeはDRAW / ROUNDのみ。旧SYNTHESISは版1の保管用検証だけで扱う。seqは最新version+1。Actionsは追記専用とし、ゲームコードから既存行を上書きしない。プレイヤーごとの連番に欠落・重複がないこと、requestId一意、JSON型、state.version、参照ID、非負ポイント、保存済み結果からの状態差分を検証する。
 
@@ -142,7 +142,7 @@ payloadHashは `op + expectedVersion + 正規化payload` の安定したJSON表�
 
 ## 廃止する画像データと新しいセリフ管理
 
-画像生成・登録・WebP配信・画像キャッシュは撤去する。Assets表とCharacters/Skills.assetIdはv1の既存記録・バックアップの互換性のため残し、新規ゲームの表示・保存・生成AIでは利用しない。現行コードはまだ参照しているため、撤去実装時にテストを更新する。8表の列順や既存Actionsを今回の設計だけで書き換えない。
+画像生成・登録・WebP配信・画像キャッシュは撤去する。Assets表とCharacters/Skills.assetIdはv1の既存記録・バックアップの互換性のため残し、新規ゲームの表示・保存・生成AIでは利用しない。新コードの画像参照は撤去済み。旧版1の検証だけが旧Assetsを扱う。8表の列順や既存Actionsを今回の設計だけで書き換えない。
 
 AIセリフはActionsに混ぜない。任意の追加2表DialogueDrafts（9枠の下書き）とDialoguePublication（公開版・採用集JSONの1行）で管理する。bootstrapは採用済み集だけを返し、プレイ中の生成や更新を行わない。公開はロック内で版比較・1行保存・flush・再読込を行う。管理生成の予約・日次回数はScript Propertiesに保持し、外部生成中はロックを解放する。追加2表もバックアップ照合の対象にし、旧8表だけの復元では定型文で稼働する。詳細は[現行設計](specs/ai-battle-dialogue.md)。
 ## 合成廃止に伴う版と旧記録の扱い
@@ -164,7 +164,7 @@ AIセリフはActionsに混ぜない。任意の追加2表DialogueDrafts（9枠�
 
 ## 関連タスク
 
-[MVP実装計画](tasks/02_backlog/mvp-implementation.md)で初期データ・保存・再送の実装を追跡する。schema・設定・永続化方式の変更には目的、互換性、移行・復元、AC09〜AC13・AC21〜AC23への影響を記録する。
+[MVP実装計画](tasks/03_active/mvp-implementation.md)で初期データ・保存・再送の実装を追跡する。schema・設定・永続化方式の変更には目的、互換性、移行・復元、AC09〜AC13・AC21〜AC23への影響を記録する。
 
 ### ③の正規化・容量の実装詳細（旧masterVersion=1の履歴）
 
@@ -173,3 +173,5 @@ inputJsonは `{op,expectedVersion,payload}`。合成材料をソートした後�
 全行のseq、actionId/requestId一意、schema/master版、入力ハッシュ、結果と次状態の差分を毎回検証する。書込前にも全体を検証し、setValues→flush→対象行照合→全体再読込をロック内で行う。Sheetsの手編集との競合や原子的トランザクションを保証するものではない。
 
 旧画像キャッシュの仕様は廃止。標準カードの表示に画像RPCや画像設定を必要としない。
+
+新規datasetIdはブックID文字列のcanonical JSONをSHA-256化した識別子。実IDを返さず、変更要求とinputJsonに含める。通常の初回成功は応答stateで表示を更新し、追加bootstrapを行わない。手動再送・replayed=true・競合時はbootstrapで最新化する。旧版1のハッシュにはdatasetIdを追加しない。

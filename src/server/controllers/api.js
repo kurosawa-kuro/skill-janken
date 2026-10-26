@@ -18,7 +18,7 @@ function handleApi_(request, factory) {
       replayed: mutation && result.replayed === true,
       data: result.data,
     };
-    if (request.op !== "getAsset") {
+    {
       if (
         !Number.isSafeInteger(result.version) ||
         result.version < 0 ||
