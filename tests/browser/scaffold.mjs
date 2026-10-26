@@ -44,19 +44,34 @@ try {
     await page.getByRole("button", { name: "なかまをよぶ（無料）" }).click();
     await expect(page.locator("#result")).toBeVisible();
     assert.equal(calls.length, before + 1);
-    await page.locator("#result-close").click();
+    if (i === 0) {
+      const count = calls.length;
+      await page.locator("#result-next").click();
+      await expect(
+        page.locator('input[name="character"]:checked'),
+      ).not.toHaveValue("C01");
+      await expect(page.locator("#battle-submit")).toBeDisabled();
+      assert.equal(calls.length, count);
+      await page.locator('[data-view="home"]').click();
+    } else await page.locator("#result-close").click();
   }
-  await expect(
-    page.getByRole("button", { name: "みんなそろったよ" }),
-  ).toBeDisabled();
+  await expect(page.locator("#draw-character")).toHaveCount(0);
+  await expect(page.locator("#view")).toContainText("みんなそろったよ");
   await page.locator('[data-view="friends"]').click();
   await expect(page.locator("#view .card")).toHaveCount(3);
   await page.locator('[data-view="battle"]').click();
-  await page.locator("#battle-character").selectOption("C02");
+  await page.locator("#character-C02").check();
   await expect(page.locator('input[name="skill"]')).toHaveCount(2);
   await page.locator('input[value="S03"]').check();
   const before = calls.length;
+  await expect(page.locator("#battle-submit")).toBeDisabled();
   await page.getByRole("button", { name: "グー", exact: true }).click();
+  assert.equal(calls.length, before);
+  await expect(page.locator("#hand-rock")).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await page.locator("#battle-submit").click();
   await expect(page.locator("#result")).toBeVisible();
   assert.equal(calls.length, before + 1);
   await expect(page.locator(".bubble")).toBeVisible();
@@ -65,6 +80,13 @@ try {
     path: join(output, "mvp-battle.png"),
     fullPage: true,
   });
+  const resultCalls = calls.length;
+  await page.locator("#result-next").click();
+  await expect(page.locator("#battle-submit")).toBeDisabled();
+  assert.equal(calls.length, resultCalls);
+  await page.getByRole("button", { name: "グー", exact: true }).click();
+  await page.locator("#battle-submit").click();
+  await expect(page.locator("#result")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(page.locator("#result")).not.toBeVisible();
   assert.equal(
@@ -79,7 +101,7 @@ try {
       .evaluateAll((xs) => xs.filter((x) => x.textContent === "○").length),
     6,
   );
-  await expect(page.locator("ol li")).toHaveCount(3);
+  await expect(page.locator("ol li")).toHaveCount(4);
   await fit();
   await page.screenshot({
     path: join(output, "mvp-relations.png"),
@@ -102,6 +124,7 @@ try {
     } else await route.continue();
   });
   await page.getByRole("button", { name: "グー", exact: true }).click();
+  await page.locator("#battle-submit").click();
   await expect(page.locator("#resend")).toBeVisible();
   await page.unroute("**/__test_api");
   const count = gas.sheets.get("Actions").rows.length;
@@ -124,9 +147,11 @@ try {
   await page.locator('[data-view="battle"]').click();
   await other.locator('[data-view="battle"]').click();
   await page.getByRole("button", { name: "グー", exact: true }).click();
+  await page.locator("#battle-submit").click();
   await expect(page.locator("#result")).toBeVisible();
   await page.locator("#result-close").click();
   await other.getByRole("button", { name: "パー", exact: true }).click();
+  await other.locator("#battle-submit").click();
   await expect(other.locator("#status")).toContainText("きろく");
   await expect(other.locator("#summary")).toHaveText(
     await page.locator("#summary").textContent(),
@@ -171,14 +196,23 @@ try {
   admin.on("pageerror", (e) => errors.push(e.message));
   await admin.goto(url + "?view=admin");
   await admin.locator("#admin-init").click();
-  await expect(admin.locator("#admin-slots section")).toHaveCount(9);
-  const slot = admin.locator("#admin-slots section").first();
+  await expect(admin.locator("#admin-slots > section")).toHaveCount(3);
+  const adminRequests = calls.length;
+  await admin.locator('[data-character="all"]').click();
+  await expect(admin.locator("#admin-slots > section")).toHaveCount(9);
+  assert.equal(calls.length, adminRequests);
+  await admin.locator('[data-character="C01"]').click();
+  const slot = admin.locator("#slot-C01_WIN");
   await slot.getByRole("button", { name: "候補を生成" }).click();
   await expect(slot.locator("input[type=checkbox]")).toHaveCount(2);
   assert.equal(generated, 1);
   assert.equal(gas.context.readPublicDialogue_(gas.book).entries.length, 0);
+  await expect(slot.locator("#publish-C01_WIN")).toBeDisabled();
   await slot.locator("input[type=checkbox]").first().check();
-  await slot.getByRole("button", { name: "選んだ文を採用・公開" }).click();
+  await admin.locator('[data-character="C02"]').click();
+  await admin.locator('[data-character="C01"]').click();
+  await expect(slot.locator("input[type=checkbox]").first()).toBeChecked();
+  await slot.getByRole("button", { name: /選んだ文を採用・公開/ }).click();
   await expect(slot).toContainText("採用済み");
   await admin.screenshot({
     path: join(output, "mvp-admin.png"),
@@ -190,6 +224,7 @@ try {
   await page.locator('[data-view="battle"]').click();
   const start = calls.length;
   await page.getByRole("button", { name: "グー", exact: true }).click();
+  await page.locator("#battle-submit").click();
   await expect(page.locator(".bubble")).toHaveText(
     "いっしょにできてうれしいな！",
   );
@@ -198,6 +233,25 @@ try {
   await slot.getByRole("button", { name: "採用を解除して定型文へ" }).click();
   await expect(slot).toContainText("定型文のみ");
   assert.equal(await page.locator("img").count(), 0);
+  await page.locator("#result-close").click();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.locator('[data-view="home"]').click();
+  await fit();
+  await page.screenshot({
+    path: join(output, "uiux-desktop-home.png"),
+    fullPage: true,
+  });
+  await page.locator('[data-view="battle"]').click();
+  await fit();
+  await page.screenshot({
+    path: join(output, "uiux-desktop-battle.png"),
+    fullPage: true,
+  });
+  await admin.setViewportSize({ width: 1280, height: 900 });
+  await admin.screenshot({
+    path: join(output, "uiux-desktop-admin.png"),
+    fullPage: true,
+  });
   assert.deepEqual(errors, []);
   assert.equal(
     calls.some((r) =>
@@ -211,11 +265,14 @@ try {
       {
         date: new Date().toISOString(),
         browser: browser.version(),
-        viewport: "360x800",
+        viewports: ["360x800", "1280x900"],
         result: "PASS",
         actions: gas.context.readSnapshot_().actions.length,
         checks: [
           "golden-path",
+          "local-selection-explicit-submit",
+          "result-continue-without-request",
+          "admin-filter-selection-preserved",
           "no-overflow",
           "one-rpc-per-mutation",
           "lost-response-reload-manual-replay",

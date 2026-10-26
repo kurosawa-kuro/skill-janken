@@ -50,7 +50,7 @@ flowchart LR
 | db/legacy.js・legacy-schema.js | 旧物理1（マスター1・2）の読取り・バックアップ用検証。旧操作を公開しない |
 | controllers/admin.js・backup.js | 新規ブック作成、旧マスター2の別ブック移行、検証付きバックアップ・切替 |
 | services/dialogue.js・gemini.js | 下書き・公開版・生成予約・回数制限・テキストAPI |
-| client/index.html・app.html・styles.html | ゲーム4画面、結果、学習表示 |
+| client/index.html・app.html・styles.html | 対戦中心の4画面、選択と決定、結果からの継続、レスポンシブ配置、学習表示 |
 | client/core/pending.html・dialogue.html | データセット別保留、手動再送、セリフのローカル選択 |
 | client/admin.html・admin-app.html | 候補生成・確認・選択・公開・解除 |
 | scripts/・tests/ | 配布しない開発・検証コード |
@@ -213,4 +213,4 @@ playerIdはクライアントから受け取らず、初版サーバー内でP00
 
 管理成功dataにgenerationを追加する。allowed、reason（ready / disabled / configuration / stopped / dailyLimit / reservationLimit / unavailable）、取得可能な場合はday・used・limit・reservations・reservationLimitを返す。キー・メール・外部応答は含めず、ゲームapiには返さない。画面の生成可否表示は案内であり、生成時のサーバー側上限判定を省略しない。
 
-ゲームは下部固定ナビ・手動再読込を備える。再送解決後は最新状態を表示し、保存済み結果をモーダルで見せる。通常成功時の追加RPCはなく、タブ復帰・履歴復帰のときだけ状態を同期する。起動時に取得したセリフ集はそのページ内で維持する。
+ゲームは1列の下部固定ナビ・手動再読込を備える。仲間・スキル・手の選択はローカル処理とし、決定時だけplayRoundを呼ぶ。再送解決後は最新状態を表示し、保存済み結果をモーダルで見せる。通常成功時の追加RPCはなく、タブ復帰・履歴復帰のときだけ状態を同期する。起動・手動読込・復帰同期のbootstrapで取得した採用集を保持し、対戦中は追加取得しない。

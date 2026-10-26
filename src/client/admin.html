@@ -1,24 +1,57 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ja">
   <head>
     <base target="_top" />
     <meta charset="utf-8" />
     <?!= include_("client/styles") ?>
   </head>
-  <body>
+  <body class="admin">
     <main>
-      <p class="eyebrow">提供者用・事前準備</p>
-      <h1>なかまのセリフ管理</h1>
-      <p>
-        候補を作り、内容を確認してから採用します。ゲーム中にAIは呼び出しません。
-      </p>
-      <section class="panel">
+      <header class="admin-header">
+        <p class="eyebrow">提供者用 / セリフの準備室</p>
+        <h1>なかまのセリフ管理</h1>
+        <p>
+          候補を読み、届けたい言葉を選んで公開します。ゲーム中の生成はありません。
+        </p>
+        <ol class="admin-process" aria-label="制作の流れ">
+          <li>1 候補を生成</li>
+          <li>2 内容を確認・選択</li>
+          <li>3 採用して公開</li>
+        </ol>
+      </header>
+      <div id="admin-overview" class="admin-overview" hidden></div>
+      <section
+        class="connection-panel"
+        aria-label="管理の状態"
+        id="admin-panel"
+        aria-busy="true"
+      >
         <p id="admin-generation" class="hint"></p>
         <p id="admin-status" role="status" aria-live="polite">読み込み中…</p>
-        <button id="admin-refresh">一覧を読み直す</button
-        ><button id="admin-init" hidden>セリフの保存先を準備</button
-        ><button id="admin-resume" hidden>未確認の生成結果を確認</button>
+        <div class="admin-toolbar">
+          <button id="admin-refresh" class="secondary">一覧を読み直す</button
+          ><button id="admin-init" hidden>セリフの保存先を準備</button
+          ><button id="admin-resume" hidden>未確認の生成結果を確認</button>
+        </div>
       </section>
+      <div id="admin-empty" class="panel" hidden>
+        <h2>最初に、保存先を準備しましょう</h2>
+        <p>
+          上の「セリフの保存先を準備」を押すと、3体 ×
+          3つの勝敗の9枠を用意します。準備するだけではAI生成は始まりません。
+        </p>
+      </div>
+      <nav
+        id="admin-filters"
+        class="admin-filters"
+        aria-label="表示するなかま"
+        hidden
+      >
+        <button data-character="C01" aria-pressed="true">ひのこ</button
+        ><button data-character="C02" aria-pressed="false">しずく</button
+        ><button data-character="C03" aria-pressed="false">このは</button
+        ><button data-character="all" aria-pressed="false">すべて</button>
+      </nav>
       <div id="admin-slots"></div>
     </main>
     <script>

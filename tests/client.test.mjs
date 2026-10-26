@@ -172,3 +172,51 @@ test("loading state stays busy until RPC settles; malformed success is not shown
     dom.window.close();
   }
 });
+
+test("battle selection stays local and only explicit confirmation sends one mutation", async () => {
+  const requests = [],
+    gas = createGas({ services: { bootstrap: bootstrapResult } }),
+    google = scriptRunner(() => null);
+  google.script.run.api = function (request) {
+    requests.push(request);
+    const success = this.success;
+    if (request.op === "bootstrap")
+      queueMicrotask(() => success(gas.call(request)));
+    // Keep the mutation in flight to check the entire form's busy state.
+  };
+  const dom = page(gas, google);
+  try {
+    await tick();
+    const doc = dom.window.document;
+    doc.querySelector('[data-view="battle"]').click();
+    assert.equal(doc.activeElement.id, "view-title");
+    assert.equal(doc.querySelector("#character-C02").disabled, true);
+    assert.equal(doc.querySelector("#battle-submit").disabled, true);
+    doc.querySelector("#hand-rock").click();
+    assert.equal(
+      doc.querySelector("#hand-rock").getAttribute("aria-pressed"),
+      "true",
+    );
+    assert.equal(doc.querySelector("#battle-submit").disabled, false);
+    const skill = doc.querySelector('input[name="skill"][value="S02"]');
+    skill.checked = true;
+    skill.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+    assert.equal(requests.length, 1);
+    doc.querySelector("#battle-submit").click();
+    doc.querySelector("#battle-submit").click();
+    await tick();
+    assert.equal(requests.length, 2);
+    assert.equal(requests[1].op, "playRound");
+    assert.deepEqual(JSON.parse(JSON.stringify(requests[1].payload)), {
+      characterId: "C01",
+      skillId: "S02",
+      hand: "rock",
+    });
+    assert.equal(doc.querySelector("#battle-submit").disabled, true);
+    assert.equal(doc.querySelector("#hand-paper").disabled, true);
+    assert.equal(skill.disabled, true);
+    assert.equal(doc.querySelector("#panel").getAttribute("aria-busy"), "true");
+  } finally {
+    dom.window.close();
+  }
+});

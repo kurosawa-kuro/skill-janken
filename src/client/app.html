@@ -1,85 +1,424 @@
-<script>
+﻿<script>
   (() => {
     const { $, el } = App.dom,
       names = { rock: "グー", scissors: "チョキ", paper: "パー" },
+      symbols = { rock: "✊", scissors: "✌", paper: "✋" },
       outcomes = { WIN: "かち！", LOSE: "まけ", DRAW: "あいこ" },
-      effects = { S01: "勝ったら＋1", S02: "負けても＋1", S03: "あいこで＋1" };
+      effects = { S01: "勝ったら＋1", S02: "負けても＋1", S03: "あいこで＋1" },
+      shortSkills = { S01: "勝ちで＋1", S02: "負けで＋1", S03: "あいこで＋1" };
     let data,
       catalog,
       screen = "home",
       characterId = "C01",
       skillId = "S01",
+      selectedHand = null,
       working = false,
+      lastError = false,
       focusOrigin,
       focusId,
       refreshOnReturn = false,
-      relationToken = 0;
+      relationToken = 0,
+      lastResult,
+      resultDestination = null;
+
     function controls() {
       const s = App.commands?.status();
+      const waiting = working || !!s?.busy;
+      const unsafe = !s || s.blocked || !!s.pending || s.needsSync;
       document.querySelectorAll("[data-mutation]").forEach((b) => {
         b.disabled =
-          working ||
-          !s ||
-          s.busy ||
-          s.blocked ||
-          !!s.pending ||
-          s.needsSync ||
+          waiting ||
+          unsafe ||
           data?.limits.remainingActions === 0 ||
           b.dataset.unavailable === "true";
       });
+      document.querySelectorAll("[data-choice]").forEach((b) => {
+        b.disabled = waiting || unsafe || b.dataset.unavailable === "true";
+      });
       $("resend").hidden = !s?.pending || s?.blocked;
-      $("resend").disabled = working || s?.busy;
-      $("retry").disabled = working || s?.busy;
-      $("refresh-state").disabled =
-        working || !s || s.busy || s.blocked || !!s.pending;
+      $("resend").disabled = waiting;
+      $("retry").disabled = waiting;
+      $("refresh-state").disabled = waiting || !s || s.blocked || !!s.pending;
+      $("panel").setAttribute("aria-busy", String(waiting));
+      $("panel").dataset.state = waiting
+        ? "busy"
+        : unsafe || lastError
+          ? "attention"
+          : "ready";
+      const hint = s?.blocked
+        ? "新しいあそびはお休み中。大人といっしょに、きろくをかくにんしてね。"
+        : s?.pending
+          ? "さっきの操作がとどいたか、下のボタンでかくにんしよう。同じ操作をもう一度作らなくていいよ。"
+          : s?.needsSync
+            ? "きろくをよみなおしてから、あそびをつづけよう。"
+            : waiting && data
+              ? "そのまま少しまってね。とどいたら、けっかを見せるよ。"
+              : "";
+      $("recovery-hint").textContent = hint;
+      $("recovery-hint").hidden = !hint;
     }
-    function button(text, fn, mutation = false, unavailable = false, id = "") {
-      const b = el("button", "", text);
+    function button(text, fn, className = "", id = "") {
+      const b = el("button", className, text);
       b.type = "button";
       if (id) b.id = id;
-      if (mutation) {
-        b.dataset.mutation = "true";
-        b.dataset.unavailable = String(unavailable);
-      }
       b.addEventListener("click", fn);
       return b;
     }
-    function card(c) {
-      const box = el("div", "card");
-      const shape = el("span", "shape " + c.characterId);
+    function mutationButton(text, fn, id, unavailable = false, className = "") {
+      const b = button(text, fn, className, id);
+      b.dataset.mutation = "true";
+      b.dataset.unavailable = String(unavailable);
+      return b;
+    }
+    function mascot(id, small = false) {
+      const shape = el("span", "mascot " + id + (small ? " small" : ""));
       shape.setAttribute("aria-hidden", "true");
-      box.append(
-        shape,
-        el("strong", "", c.name),
-        el(
-          "span",
-          "",
-          data.state.ownedCharacterIds.includes(c.characterId)
-            ? "なかまになったよ"
-            : "まだであっていない",
-        ),
+      shape.append(el("span", "mascot-face", "•ᴗ•"));
+      return shape;
+    }
+    function skillMark(id) {
+      const mark = el(
+        "span",
+        "skill-mark " + id,
+        { S01: "勝", S02: "負", S03: "同" }[id],
       );
-      return box;
+      mark.setAttribute("aria-hidden", "true");
+      return mark;
+    }
+    function skillList(id) {
+      return data.skills.filter(
+        (s) =>
+          data.state.unlockedSkillIds.includes(s.skillId) &&
+          data.characterSkills.some(
+            (r) => r.characterId === id && r.skillId === s.skillId,
+          ),
+      );
     }
     function apply(response) {
-      data = response.data;
-      const s = data.state;
+      const next = response.data,
+        s = next?.state;
       if (
-        !data.player ||
+        !next?.player ||
         !Number.isSafeInteger(s?.points) ||
         s.points < 0 ||
         response.version !== s.version ||
-        data.masterVersion !== 2
+        next.masterVersion !== 2 ||
+        !Array.isArray(next.characters) ||
+        !Array.isArray(next.skills) ||
+        !Array.isArray(next.characterSkills) ||
+        !Array.isArray(s.ownedCharacterIds) ||
+        !Array.isArray(s.unlockedSkillIds)
       )
         throw Error();
+      data = next;
+      catalog = next.dialogueCatalog;
+      if (!s.ownedCharacterIds.includes(characterId))
+        characterId = s.ownedCharacterIds[0];
+      const score = el("p", "score", "たんきゅうポイント ");
+      score.append(el("strong", "", s.points));
       $("summary").replaceChildren(
-        el("p", "record", data.player.displayName),
-        el("p", "score", "たんきゅうポイント " + s.points),
-        el("p", "hint", "これまでの合計だよ。使ってへることはないよ。"),
+        el("p", "record", next.player.displayName),
+        score,
       );
       $("summary").hidden = false;
       $("navigation").hidden = false;
       $("view").hidden = false;
+    }
+    function collection() {
+      const count =
+        data.characters.length - data.state.ownedCharacterIds.length;
+      const box = el("section", "panel collection-panel");
+      box.append(
+        el("p", "eyebrow", "なかまをあつめる"),
+        el(
+          "h3",
+          "",
+          "なかま " +
+            data.state.ownedCharacterIds.length +
+            " / " +
+            data.characters.length,
+        ),
+      );
+      const progress = el("div", "collection-progress");
+      progress.setAttribute("aria-hidden", "true");
+      data.characters.forEach((c) =>
+        progress.append(
+          el(
+            "span",
+            data.state.ownedCharacterIds.includes(c.characterId)
+              ? "filled"
+              : "",
+            data.state.ownedCharacterIds.includes(c.characterId) ? "✓" : "？",
+          ),
+        ),
+      );
+      box.append(progress);
+      if (count)
+        box.append(
+          mutationButton(
+            "なかまをよぶ（無料）",
+            () => change("drawCharacter", {}),
+            "draw-character",
+            false,
+            "secondary",
+          ),
+          el(
+            "p",
+            "hint",
+            "まだいない" +
+              count +
+              "体から同じ確率（" +
+              Math.round(100 / count) +
+              "%）。同じなかまは出ないよ。",
+          ),
+        );
+      else
+        box.append(
+          el("p", "tag", "みんなそろったよ"),
+          el("p", "hint", "3体でスキルをためしてみよう。"),
+        );
+      return box;
+    }
+    function renderHome(view) {
+      const grid = el("div", "hero-grid"),
+        hero = el("section", "panel hero"),
+        c = data.characters.find((c) => c.characterId === characterId);
+      hero.append(
+        el("p", "eyebrow", "えらんで、ためして、はっけん！"),
+        el("h3", "", "きょうは、どのスキルであそぶ？"),
+        el(
+          "p",
+          "",
+          "なかまとスキルをえらんで、じゃんけん。負けてもポイントがふえるよ。",
+        ),
+      );
+      const stage = el("div", "hero-stage"),
+        caption = el("div", "stage-caption");
+      caption.append(
+        el("span", "tag", "いっしょにあそぶなかま"),
+        el("strong", "", c.name),
+      );
+      stage.append(mascot(c.characterId), caption);
+      hero.append(
+        stage,
+        button(
+          "じゃんけんへ",
+          () => navigate("battle"),
+          "primary",
+          "start-battle",
+        ),
+      );
+      const side = el("div", "side-stack"),
+        discovery = el("section", "panel");
+      const link = button("", () => navigate("relations"), "section-link");
+      link.append(
+        el("p", "eyebrow", "ラボのはっけん"),
+        el("strong", "", "同じスキルを使えるのは？ →"),
+        el("span", "hint", "なかまとスキルの、つながりを見てみよう。"),
+      );
+      discovery.append(link);
+      side.append(collection(), discovery);
+      grid.append(hero, side);
+      view.append(grid);
+    }
+    function renderFriends(view) {
+      const layout = el("div", "friends-layout"),
+        grid = el("div", "card-grid");
+      layout.append(collection());
+      data.characters.forEach((c) => {
+        const owned = data.state.ownedCharacterIds.includes(c.characterId),
+          box = el("article", "card" + (owned ? "" : " locked")),
+          portrait = el("div", "portrait");
+        portrait.append(mascot(c.characterId));
+        box.append(
+          portrait,
+          el("span", "tag", owned ? "なかまになったよ" : "まだであっていない"),
+          el("h3", "", c.name),
+        );
+        const tags = el("div", "skill-tags");
+        skillList(c.characterId).forEach((s) =>
+          tags.append(el("span", "tag", effects[s.skillId])),
+        );
+        box.append(tags);
+        const b = button(
+          owned ? c.name + "とあそぶ" : "よぶと、なかまになるよ",
+          () => {
+            characterId = c.characterId;
+            selectedHand = null;
+            navigate("battle");
+          },
+          owned ? "" : "secondary",
+        );
+        b.disabled = !owned;
+        box.append(b);
+        grid.append(box);
+      });
+      layout.append(grid);
+      view.append(layout);
+    }
+    function step(number, title, field = true) {
+      const box = el(field ? "fieldset" : "section", "step-panel");
+      const heading = el(field ? "legend" : "h3");
+      heading.append(
+        el("span", "step-number", number),
+        document.createTextNode(title),
+      );
+      box.append(heading);
+      return box;
+    }
+    function renderBattle(view) {
+      const skills = skillList(characterId);
+      if (!skills.some((s) => s.skillId === skillId))
+        skillId = skills[0].skillId;
+      const layout = el("div", "battle-layout"),
+        setup = el("div", "battle-setup"),
+        friends = step(1, "なかまをえらぶ"),
+        options = el("div", "character-options");
+      for (const c of data.characters) {
+        const owned = data.state.ownedCharacterIds.includes(c.characterId),
+          label = el("label", "character-option"),
+          radio = el("input");
+        radio.type = "radio";
+        radio.name = "character";
+        radio.value = c.characterId;
+        radio.id = "character-" + c.characterId;
+        radio.checked = characterId === c.characterId;
+        radio.dataset.choice = "true";
+        radio.dataset.unavailable = String(!owned);
+        radio.addEventListener("change", () => {
+          characterId = c.characterId;
+          selectedHand = null;
+          render();
+          $(radio.id).focus();
+        });
+        label.append(
+          mascot(c.characterId),
+          el("strong", "", c.name),
+          radio,
+          el("span", "hint", owned ? "えらべる" : "まだ未所有"),
+        );
+        options.append(label);
+      }
+      friends.append(options);
+      setup.append(friends);
+      const field = step(2, "スキルをえらぶ"),
+        choices = el("div", "skill-options");
+      for (const s of skills) {
+        const label = el("label", "skill"),
+          radio = el("input"),
+          text = el("span");
+        radio.type = "radio";
+        radio.name = "skill";
+        radio.value = s.skillId;
+        radio.checked = s.skillId === skillId;
+        radio.dataset.choice = "true";
+        radio.addEventListener("change", () => {
+          skillId = s.skillId;
+          updateBattlePlan();
+        });
+        text.append(
+          el("strong", "", s.name),
+          el("span", "hint", effects[s.skillId] + "ポイント"),
+        );
+        label.append(radio, skillMark(s.skillId), text);
+        choices.append(label);
+      }
+      field.append(choices);
+      setup.append(field);
+      const arena = step(3, "手をえらんで、じゃんけん", false);
+      arena.classList.add("arena");
+      const pair = el("div", "battle-pair"),
+        cpu = el("span", "cpu-mark", "？");
+      cpu.setAttribute("aria-label", "あいての手はまだひみつ");
+      pair.append(mascot(characterId), el("span", "versus", "VS"), cpu);
+      arena.append(pair);
+      const hands = el("div", "hands");
+      hands.setAttribute("role", "group");
+      hands.setAttribute("aria-label", "出す手");
+      for (const hand of Object.keys(names)) {
+        const b = button(
+          "",
+          () => {
+            selectedHand = hand;
+            updateBattlePlan();
+          },
+          "",
+          "hand-" + hand,
+        );
+        b.dataset.choice = "true";
+        b.setAttribute("aria-label", names[hand]);
+        const symbol = el("span", "hand-symbol", symbols[hand]);
+        symbol.setAttribute("aria-hidden", "true");
+        b.append(symbol, el("span", "", names[hand]));
+        hands.append(b);
+      }
+      arena.append(hands, el("p", "hint", "えらぶだけでは始まらないよ。"));
+      const preview = el("p", "hint");
+      preview.id = "hand-preview";
+      preview.setAttribute("role", "status");
+      arena.append(
+        preview,
+        mutationButton(
+          "この手でじゃんけん！",
+          () => {
+            if (selectedHand)
+              change("playRound", { characterId, skillId, hand: selectedHand });
+          },
+          "battle-submit",
+          !selectedHand,
+          "battle-submit",
+        ),
+      );
+      const rule = el("details", "rule-summary");
+      rule.append(el("summary", "", "ポイントのふえ方"));
+      const points = el("div", "rule-points");
+      points.id = "rule-points";
+      rule.append(
+        points,
+        el(
+          "p",
+          "hint",
+          "スキルが変えるのはポイント。勝ち負けや、あいての手は変わらないよ。",
+        ),
+      );
+      arena.append(rule);
+      layout.append(setup, arena);
+      view.append(layout);
+      updateBattlePlan();
+    }
+    function updateBattlePlan() {
+      if (!$("battle-submit")) return;
+      for (const hand of Object.keys(names))
+        $("hand-" + hand).setAttribute(
+          "aria-pressed",
+          String(selectedHand === hand),
+        );
+      $("hand-preview").textContent = selectedHand
+        ? names[selectedHand] + "でいくよ。きまったら下のボタン！"
+        : "グー・チョキ・パーからひとつえらぼう。";
+      $("battle-submit").dataset.unavailable = String(!selectedHand);
+      const rule = $("rule-points");
+      rule.replaceChildren();
+      for (const [outcome, label] of [
+        ["WIN", "勝ち"],
+        ["LOSE", "負け"],
+        ["DRAW", "あいこ"],
+      ]) {
+        const bonus =
+          { S01: "WIN", S02: "LOSE", S03: "DRAW" }[skillId] === outcome;
+        rule.append(
+          el(
+            "span",
+            "",
+            label +
+              " " +
+              (outcome === "WIN" ? 2 : 1) +
+              (bonus ? "＋1" : "") +
+              "pt",
+          ),
+        );
+      }
+      controls();
     }
     function render() {
       if (!data) return;
@@ -94,191 +433,115 @@
             b.dataset.view === screen ? "page" : "false",
           ),
         );
-      const title = el(
-        "h2",
-        "",
-        {
-          home: "きょうのたんけん",
-          friends: "なかまたち",
-          battle: "じゃんけんしよう",
-          relations: "つながりをみよう",
-        }[screen],
-      );
+      const heading = el("div", "view-heading"),
+        title = el(
+          "h2",
+          "",
+          {
+            home: "きょうのたんけん",
+            friends: "なかまのずかん",
+            battle: "じゃんけんしよう",
+            relations: "つながりをみつけよう",
+          }[screen],
+        );
       title.id = "view-title";
-      view.append(title);
-      if (screen === "home") {
-        const count = 3 - data.state.ownedCharacterIds.length;
-        view.append(
-          el(
-            "p",
-            "",
-            count ? "まだ見ぬなかまを、よんでみよう。" : "みんなそろったよ！",
-          ),
-          button(
-            count ? "なかまをよぶ（無料）" : "みんなそろったよ",
-            () => change("drawCharacter", {}),
-            true,
-            !count,
-            "draw-character",
-          ),
-          el(
-            "p",
-            "hint",
-            count
-              ? "まだいない" +
-                  count +
-                  "体から、同じ確率（" +
-                  Math.round(100 / count) +
-                  "%）でであうよ。"
-              : "じゃんけんでスキルをためそう。",
-          ),
-          button("じゃんけんへ", () => navigate("battle")),
-        );
-        view.append(
-          card(data.characters.find((c) => c.characterId === characterId)),
-        );
-      } else if (screen === "friends") {
-        for (const c of data.characters) {
-          const box = card(c),
-            owned = data.state.ownedCharacterIds.includes(c.characterId);
-          box.append(
-            el(
-              "p",
-              "hint",
-              data.characterSkills
-                .filter((r) => r.characterId === c.characterId)
-                .map((r) => effects[r.skillId])
-                .join(" ／ "),
-            ),
-          );
-          const b = button("このなかまとあそぶ", () => {
-            characterId = c.characterId;
-            navigate("battle");
-          });
-          b.disabled = !owned;
-          box.append(b);
-          view.append(box);
-        }
-      } else if (screen === "battle") {
-        const label = el("label", "", "なかま "),
-          select = el("select");
-        select.id = "battle-character";
-        for (const c of data.characters.filter((c) =>
-          data.state.ownedCharacterIds.includes(c.characterId),
-        )) {
-          const o = el("option", "", c.name);
-          o.value = c.characterId;
-          select.append(o);
-        }
-        select.value = characterId;
-        select.addEventListener("change", () => {
-          characterId = select.value;
-          render();
-          $("battle-character").focus();
-        });
-        label.append(select);
-        view.append(label);
-        const skills = data.skills.filter((s) =>
-          data.characterSkills.some(
-            (r) => r.characterId === characterId && r.skillId === s.skillId,
-          ),
-        );
-        if (!skills.some((s) => s.skillId === skillId))
-          skillId = skills[0].skillId;
-        const field = el("fieldset");
-        field.append(el("legend", "", "スキルをひとつえらぼう"));
-        for (const s of skills) {
-          const l = el("label", "skill");
-          const radio = el("input");
-          radio.type = "radio";
-          radio.name = "skill";
-          radio.value = s.skillId;
-          radio.checked = s.skillId === skillId;
-          radio.addEventListener("change", () => {
-            skillId = s.skillId;
-          });
-          const mark = el(
-            "span",
-            "skill-mark " + s.skillId,
-            { S01: "勝", S02: "負", S03: "同" }[s.skillId],
-          );
-          mark.setAttribute("aria-hidden", "true");
-          l.append(
-            radio,
-            mark,
-            el("span", "", s.name + " — " + effects[s.skillId]),
-          );
-          field.append(l);
-        }
-        view.append(field);
-        const hands = el("div", "hands");
-        for (const hand of Object.keys(names))
-          hands.append(
-            button(
-              names[hand],
-              () => change("playRound", { characterId, skillId, hand }),
-              true,
-              false,
-              "hand-" + hand,
-            ),
-          );
-        view.append(
-          hands,
-          el(
-            "p",
-            "hint",
-            "勝ちで2、あいこ・負けで1ポイント。スキルが合えば、さらに＋1。",
-          ),
-        );
-      } else {
-        view.append(el("p", "", "ひとつのスキルを、どのなかまが使えるかな？"));
-        void relations(relationToken);
-      }
+      title.tabIndex = -1;
+      heading.append(
+        title,
+        el(
+          "span",
+          "tag",
+          {
+            home: "ようこそ、ラボへ",
+            friends: "3体・3つのスキル",
+            battle: "1回ずつ、ためしてみよう",
+            relations: "あそびの中のしくみ",
+          }[screen],
+        ),
+      );
+      view.append(heading);
       if (data.limits.remainingActions === 0)
         view.append(
-          el("p", "notice", "きょうのデモはここまで。大人をよんでね。"),
+          el(
+            "p",
+            "notice",
+            "きょうのデモはここまで。なかまやきろくは見られるよ。つづきは大人とそうだんしてね。",
+          ),
         );
+      if (screen === "home") renderHome(view);
+      else if (screen === "friends") renderFriends(view);
+      else if (screen === "battle") renderBattle(view);
+      else {
+        const loading = el("p", "panel", "つながりをよんでいるよ…");
+        loading.id = "relations-loading";
+        loading.setAttribute("role", "status");
+        view.append(loading);
+        void relations(relationToken);
+      }
       controls();
     }
     function navigate(next) {
       screen = next;
       render();
+      $("view-title")?.focus();
     }
     async function relations(token) {
       try {
         const r = await App.api.call({ op: "getRelations", payload: {} });
         if (token !== relationToken || screen !== "relations") return;
+        $("relations-loading")?.remove();
         const d = r.data,
-          view = $("view"),
+          layout = el("div", "relations-layout"),
+          matrix = el("section", "panel"),
           table = el("table");
-        table.append(el("caption", "", "なかま3体とスキル3つ・6本のつながり"));
-        const head = el("tr");
-        head.append(el("th", "", "なかま"));
+        table.append(el("caption", "", "このスキル、だれが使える？"));
+        const thead = el("thead"),
+          head = el("tr"),
+          corner = el("th", "", "なかま");
+        corner.scope = "col";
+        head.append(corner);
+        const selectors = [];
         for (const s of d.skills) {
-          const th = el("th");
+          const th = el("th"),
+            b = button(shortSkills[s.skillId], () =>
+              highlight(null, s.skillId),
+            );
           th.scope = "col";
-          th.append(button(s.skillId, () => highlight(null, s.skillId)));
+          b.setAttribute("aria-label", s.name + "のつながり");
+          b.setAttribute("aria-pressed", "false");
+          b.dataset.skill = s.skillId;
+          selectors.push(b);
+          th.append(b);
           head.append(th);
         }
-        table.append(head);
+        thead.append(head);
+        table.append(thead);
+        const tbody = el("tbody");
         for (const c of d.characters) {
-          const row = el("tr");
-          const th = el("th");
+          const row = el("tr"),
+            th = el("th"),
+            b = button(c.name, () => highlight(c.characterId, null));
           th.scope = "row";
+          b.setAttribute("aria-pressed", "false");
+          b.dataset.character = c.characterId;
+          selectors.push(b);
           th.append(
-            button(c.name, () => highlight(c.characterId, null)),
+            b,
             el(
               "span",
               "hint",
-              d.ownedCharacterIds.includes(c.characterId) ? "なかま" : "未所有",
+              d.ownedCharacterIds.includes(c.characterId)
+                ? "なかま"
+                : "まだ未所有",
             ),
           );
           row.append(th);
           for (const s of d.skills) {
             const active = d.characterSkills.some(
-              (x) => x.characterId === c.characterId && x.skillId === s.skillId,
-            );
-            const td = el("td", "", active ? "○" : "—");
+                (x) =>
+                  x.characterId === c.characterId && x.skillId === s.skillId,
+              ),
+              td = el("td", "", active ? "○" : "—");
             td.dataset.character = c.characterId;
             td.dataset.skill = s.skillId;
             td.setAttribute(
@@ -287,9 +550,15 @@
             );
             row.append(td);
           }
-          table.append(row);
+          tbody.append(row);
         }
-        view.append(table);
+        table.append(tbody);
+        const discovery = el(
+          "p",
+          "discovery",
+          "なかまの名前か、上のスキルを押してみよう。○は「使える」のしるしだよ。",
+        );
+        discovery.setAttribute("role", "status");
         function highlight(c, s) {
           table
             .querySelectorAll("td")
@@ -299,25 +568,65 @@
                 td.dataset.character === c || td.dataset.skill === s,
               ),
             );
-        }
-        for (const s of d.skills)
-          view.append(
-            el(
-              "p",
-              "hint",
-              s.skillId + " " + s.name + "：" + effects[s.skillId],
+          selectors.forEach((b) =>
+            b.setAttribute(
+              "aria-pressed",
+              String(c ? b.dataset.character === c : b.dataset.skill === s),
             ),
           );
-        view.append(
+          if (s) {
+            const ids = d.characterSkills
+              .filter((x) => x.skillId === s)
+              .map((x) => x.characterId);
+            discovery.textContent =
+              d.skills.find((x) => x.skillId === s).name +
+              "は、" +
+              d.characters
+                .filter((x) => ids.includes(x.characterId))
+                .map((x) => x.name)
+                .join("と") +
+              "が使えるよ。";
+          } else {
+            const ids = d.characterSkills
+              .filter((x) => x.characterId === c)
+              .map((x) => x.skillId);
+            discovery.textContent =
+              d.characters.find((x) => x.characterId === c).name +
+              "は、" +
+              d.skills
+                .filter((x) => ids.includes(x.skillId))
+                .map((x) => x.name)
+                .join("と") +
+              "が使えるよ。";
+          }
+        }
+        matrix.append(
+          table,
+          discovery,
+          el(
+            "p",
+            "hint",
+            "ひとつのスキルを2体で使える。なかまがふえても、6本のつながりは同じだよ。",
+          ),
+        );
+        const technical = el("details");
+        technical.append(
+          el("summary", "", "大人といっしょに、表のしくみを見る"),
           el(
             "p",
             "",
-            "なかまがふえても、6本のつながりは同じ。ひとつのスキルを2体が使えるよ。",
+            "Players（P001）→ Actions：1人に複数の記録。Characters → CharacterSkills ← Skills：仲間とスキルの多対多。",
           ),
-          el("h3", "", "たんけんたいのきろく（最新10件）"),
         );
-        const list = el("ol"),
-          filterLabel = el("label", "", "きろくの種類 "),
+        [...d.characters, ...d.skills].forEach((x) =>
+          technical.append(
+            el("p", "hint", (x.characterId || x.skillId) + "：" + x.name),
+          ),
+        );
+        matrix.append(technical);
+        const history = el("section", "panel"),
+          header = el("div", "history-header"),
+          filterLabel = el("label", "", "表示 "),
           filter = el("select");
         filter.id = "history-filter";
         for (const [value, label] of [
@@ -329,12 +638,23 @@
           filter.append(option);
         }
         filterLabel.append(filter);
-        view.append(filterLabel);
+        header.append(el("h3", "", "たんけんのきろく"), filterLabel);
+        history.append(
+          header,
+          el(
+            "p",
+            "hint",
+            "1人のきろくが、あそぶたびにつながっていくよ。最新10件を表示。",
+          ),
+        );
+        const list = el("ol", "history-list"),
+          empty = el("p", "empty-state");
         function drawHistory() {
           list.replaceChildren();
-          for (const a of d.recentActions.filter(
+          const actions = d.recentActions.filter(
             (a) => filter.value === "all" || a.type === filter.value,
-          )) {
+          );
+          for (const a of actions) {
             const c = d.characters.find(
               (c) => c.characterId === a.result.characterId,
             );
@@ -348,67 +668,114 @@
                       "：" +
                       outcomes[a.result.outcome] +
                       " ＋" +
-                      a.result.earnedPoints,
+                      a.result.earnedPoints +
+                      "ポイント",
               ),
             );
           }
+          empty.hidden = actions.length > 0;
+          empty.textContent =
+            filter.value === "ROUND"
+              ? "じゃんけんのきろくは、これから。いっしょにためしてみよう。"
+              : "まだきろくはないよ。なかまをよぶか、じゃんけんで最初の1件を作ろう。";
         }
         filter.addEventListener("change", drawHistory);
         drawHistory();
-        const technical = el("details");
-        technical.append(
-          el("summary", "", "しくみの名前"),
-          el(
-            "p",
-            "",
-            "Players（P001）→ Actions：1人に複数の記録。Characters → CharacterSkills ← Skills：仲間とスキルの多対多。",
-          ),
-        );
-        for (const c of d.characters)
-          technical.append(el("p", "hint", c.characterId + "：" + c.name));
-        view.append(
-          technical,
-          list,
-          el(
-            "p",
-            "hint",
-            "1人のプレイヤーに、いくつもの行動記録がつながっているよ。",
-          ),
-        );
+        history.append(list, empty);
+        layout.append(matrix, history);
+        $("view").append(layout);
       } catch (_) {
-        if (token === relationToken)
-          $("view").append(
-            el("p", "", "つながりをよめなかったよ。"),
+        if (token === relationToken && screen === "relations") {
+          $("relations-loading")?.remove();
+          const box = el("div", "notice");
+          box.append(
+            el(
+              "p",
+              "",
+              "つながりをよめなかったよ。もういちど、よみこんでみよう。",
+            ),
             button("つながりをもういちどよむ", () => render()),
           );
+          $("view").append(box);
+        }
       }
     }
     function showResult(response) {
       const r = response.data.result,
         body = $("result-body");
+      lastResult = r;
+      resultDestination = null;
       body.replaceChildren();
+      const c = data.characters.find((c) => c.characterId === r.characterId);
+      $("result-kicker").textContent = response.replayed
+        ? "とどいていたきろくを、かくにんしたよ"
+        : "きろくをのこしたよ";
       if (r.cpuHand) {
         $("result-title").textContent = outcomes[r.outcome];
-        body.append(
+        const hands = el("div", "result-hands");
+        for (const [label, hand] of [
+          ["あなた", r.playerHand],
+          ["あいて", r.cpuHand],
+        ]) {
+          if (label === "あいて") hands.append(el("span", "versus", "VS"));
+          const box = el("div", "result-hand"),
+            symbol = el("span", "hand-symbol", symbols[hand]);
+          symbol.setAttribute("aria-hidden", "true");
+          box.append(
+            el("span", "hint", label),
+            symbol,
+            el("strong", "", names[hand]),
+          );
+          hands.append(box);
+        }
+        const breakdown = el("div", "point-breakdown");
+        breakdown.append(
+          el("p", "earned", "＋" + r.earnedPoints),
+          el("p", "", "たんきゅうポイント"),
+          el(
+            "p",
+            "hint",
+            "基本 " + r.basePoints + " ＋ スキル " + r.bonusPoints,
+          ),
+        );
+        breakdown.append(
           el(
             "p",
             "",
-            "あなた：" + names[r.playerHand] + " ／ CPU：" + names[r.cpuHand],
+            r.bonusPoints
+              ? data.skills.find((s) => s.skillId === r.skillId).name +
+                  "がはたらいたよ！"
+              : "今回はスキルの条件とちがったね。次もためしてみよう。",
           ),
-          el("p", "score", "＋" + r.earnedPoints + "ポイント"),
-          el("p", "", "基本 " + r.basePoints + " ＋ スキル " + r.bonusPoints),
         );
-        const line = App.dialogue.choose(catalog, response.requestId, r);
-        body.append(el("p", "bubble", line.text), el("p", "hint", line.source));
+        const line = App.dialogue.choose(catalog, response.requestId, r),
+          dialogue = el("div", "result-dialogue");
+        dialogue.append(
+          mascot(c.characterId, true),
+          el("p", "bubble", line.text),
+        );
+        const source = el("details", "result-source");
+        source.append(
+          el("summary", "", "セリフについて"),
+          el("p", "", line.source),
+        );
+        body.append(hands, breakdown, dialogue, source);
+        $("result-next").textContent = "もういちど、手をえらぶ";
       } else {
         $("result-title").textContent = "なかまになったよ！";
-        body.append(
-          card(data.characters.find((c) => c.characterId === r.characterId)),
+        const portrait = el("div", "result-portrait");
+        portrait.append(mascot(c.characterId), el("strong", "", c.name));
+        body.append(portrait, el("p", "hint", "このなかまで使えるスキル"));
+        skillList(c.characterId).forEach((s) =>
+          body.append(el("p", "", s.name + "：" + effects[s.skillId])),
         );
+        $("result-next").textContent = "このなかまとあそぶ";
       }
       if (!$("result").open) $("result").showModal();
+      $("result-title").focus();
     }
     function failure(error) {
+      lastError = true;
       $("status").textContent =
         (error.code === "DATA_INTEGRITY_ERROR"
           ? "きろくをかくにんしています。大人をよんでね"
@@ -429,6 +796,7 @@
       focusOrigin = document.activeElement;
       focusId = focusOrigin?.id;
       working = true;
+      lastError = false;
       controls();
       $("status").textContent = "きろくをのこしているよ…";
       try {
@@ -437,6 +805,7 @@
           payload,
           data.state.version,
         );
+        selectedHand = null;
         apply(latest);
         render();
         $("status").textContent = "きろくをのこしたよ";
@@ -451,21 +820,23 @@
     async function load(resume = false) {
       if (working) return;
       working = true;
+      lastError = false;
       controls();
-      $("panel").setAttribute("aria-busy", "true");
       $("retry").hidden = true;
+      $("status").textContent = resume
+        ? "さっきのきろくをかくにんしているよ…"
+        : "きろくをよんでいるよ…";
       try {
         let response, recovered;
         if (resume) {
           const result = await App.commands.retry();
           response = result.latest;
           recovered = result.mutation;
-        } else if (App.commands) {
-          response = await App.commands.sync();
-        } else {
+          selectedHand = null;
+        } else if (App.commands) response = await App.commands.sync();
+        else {
           response = await App.api.bootstrap();
           apply(response);
-          catalog = response.data.dialogueCatalog;
           App.commands = App.pending.create({
             initial: response,
             changed: controls,
@@ -484,7 +855,6 @@
         failure(e);
       } finally {
         working = false;
-        $("panel").setAttribute("aria-busy", "false");
         controls();
       }
     }
@@ -501,12 +871,24 @@
     });
     $("refresh-state").addEventListener("click", () => load());
     $("result-close").addEventListener("click", () => $("result").close());
+    $("result-next").addEventListener("click", () => {
+      characterId = lastResult.characterId;
+      selectedHand = null;
+      resultDestination = "battle";
+      $("result").close();
+    });
     $("result").addEventListener("close", () => {
-      const origin = focusOrigin?.isConnected
-        ? focusOrigin
-        : document.getElementById(focusId || "");
-      if (origin && !origin.disabled && !origin.hidden) origin.focus();
-      else $("navigation").querySelector('[aria-current="page"]').focus();
+      if (resultDestination) {
+        const next = resultDestination;
+        resultDestination = null;
+        navigate(next);
+      } else {
+        const origin = focusOrigin?.isConnected
+          ? focusOrigin
+          : document.getElementById(focusId || "");
+        if (origin && !origin.disabled && !origin.hidden) origin.focus();
+        else $("navigation").querySelector('[aria-current="page"]').focus();
+      }
       syncOnReturn();
     });
     function syncOnReturn() {

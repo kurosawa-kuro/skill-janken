@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="ja">
   <head>
     <base target="_top" />
@@ -6,46 +6,68 @@
     <?!= include_("client/styles") ?>
   </head>
   <body class="game">
+    <a class="skip-link" href="#view" target="_self">あそぶところへ</a>
     <main aria-labelledby="title">
-      <p class="eyebrow">あつめる・ためす・つながる</p>
-      <h1 id="title">スキルじゃんけんラボ</h1>
-      <p class="intro">なかまと、きょうのひらめきを見つけよう。</p>
+      <header class="app-header">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">✳</span>
+          <div>
+            <p class="eyebrow">あつめる・ためす・つながる</p>
+            <h1 id="title">スキルじゃんけんラボ</h1>
+          </div>
+        </div>
+        <div id="summary" class="summary" hidden></div>
+      </header>
       <section
         id="panel"
-        class="panel"
-        aria-label="たんけんのきろく"
+        class="connection-panel"
+        aria-label="きろくの状態"
         aria-busy="true"
+        data-state="busy"
       >
-        <p id="status" role="status" aria-live="polite">
-          きろくをよんでいるよ…
-        </p>
-        <div id="summary" hidden></div>
-        <button id="refresh-state" class="secondary" disabled>
-          きろくをよみなおす
-        </button>
-        <button id="retry" hidden>もういちどよむ</button
-        ><button id="resend" hidden>つづきのきろくをかくにん</button>
+        <div class="status-line">
+          <span class="status-dot" aria-hidden="true"></span>
+          <p id="status" role="status" aria-live="polite">
+            きろくをよんでいるよ…
+          </p>
+          <button id="refresh-state" class="text-button" disabled>
+            きろくをよみなおす
+          </button>
+        </div>
+        <p id="recovery-hint" class="hint" hidden></p>
+        <div class="recovery-actions">
+          <button id="retry" hidden>もういちどよむ</button
+          ><button id="resend" hidden>つづきのきろくをかくにん</button>
+        </div>
       </section>
       <section
         id="view"
-        class="panel"
         hidden
+        tabindex="-1"
         aria-labelledby="view-title"
       ></section>
       <nav id="navigation" aria-label="あそぶばしょ" hidden>
-        <button data-view="home">ホーム</button
-        ><button data-view="friends">なかま</button
-        ><button data-view="battle">じゃんけん</button
-        ><button data-view="relations">つながり</button>
+        <button data-view="home">
+          <span aria-hidden="true">⌂</span>ホーム
+        </button>
+        <button data-view="friends">
+          <span aria-hidden="true">♧</span>なかま
+        </button>
+        <button data-view="battle">
+          <span aria-hidden="true">✌</span>じゃんけん
+        </button>
+        <button data-view="relations">
+          <span aria-hidden="true">✳</span>つながり
+        </button>
       </nav>
-      <dialog
-        id="result"
-        aria-labelledby="result-title"
-        aria-describedby="result-body"
-      >
-        <h2 id="result-title">けっか</h2>
+      <dialog id="result" aria-labelledby="result-title">
+        <p id="result-kicker" class="eyebrow">たんけんのきろく</p>
+        <h2 id="result-title" tabindex="-1">けっか</h2>
         <div id="result-body"></div>
-        <button id="result-close">つづける</button>
+        <div class="result-actions">
+          <button id="result-next">もういちど</button
+          ><button id="result-close" class="secondary">とじる</button>
+        </div>
       </dialog>
     </main>
     <script>
