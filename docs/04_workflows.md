@@ -108,3 +108,9 @@ Makefileは上記npmコマンドのラッパーへ更新した。Windowsではnp
 `npm run build` 後の `node scripts/operator.mjs backup` は検証済みバックアップ、`restore BACKUP_ID` は別コピーへの復元検証、`verify` は試験用コピーだけに決定的な1行を追記して再送・バックアップ・復元を確認するエディタ専用ビルドを作る。verifyはコピー3冊を作り、元の接続先やActionsを変えない。200件に達した元データでは追加試験できない。
 
 実行は従来どおりartifacts/operatorからclasp push、エディタのoperatorRunを1回実行する。終了後はエディタでserver/operator-run.gsを削除して通常distをpushし、存在しないことを確認する。管理ビルドからデプロイ・版作成をしない。生成HTTP 429の再試行や課金設定変更をこれらの操作に含めない。
+
+### 提供者用セリフ設定コマンド
+
+`node scripts/operator.mjs configure EMAIL true` は、GASエディタの実利用者メールとEMAILが一致する場合だけ管理者・テキストモデル・生成有効化を設定するエディタ専用ビルドを作る。`false` で生成を無効化できる。GEMINI_API_KEYは既存値を保持し、返却・ログ出力・引数での受渡しをしない。trueへの変更は既存キーがある場合だけ。生成予約・日次カウントは削除しない。このコマンドの作成や設定自体でGeminiへ接続・生成しない。
+
+2026-10-26の追加実装は整形だけを行い、利用者指示によりテスト・build・ブラウザー・実GAS検証を実行していない。最終検証は実装完了後にまとめる。

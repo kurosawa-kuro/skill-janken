@@ -5,7 +5,7 @@
     <meta charset="utf-8" />
     <?!= include_("client/styles") ?>
   </head>
-  <body>
+  <body class="game">
     <main aria-labelledby="title">
       <p class="eyebrow">あつめる・ためす・つながる</p>
       <h1 id="title">スキルじゃんけんラボ</h1>
@@ -20,22 +20,29 @@
           きろくをよんでいるよ…
         </p>
         <div id="summary" hidden></div>
+        <button id="refresh-state" class="secondary" disabled>
+          きろくをよみなおす
+        </button>
         <button id="retry" hidden>もういちどよむ</button
         ><button id="resend" hidden>つづきのきろくをかくにん</button>
       </section>
-      <nav id="navigation" aria-label="あそぶばしょ" hidden>
-        <button data-view="home">ホーム</button
-        ><button data-view="friends">なかま</button
-        ><button data-view="battle">じゃんけん</button
-        ><button data-view="relations">つながり</button>
-      </nav>
       <section
         id="view"
         class="panel"
         hidden
         aria-labelledby="view-title"
       ></section>
-      <dialog id="result" aria-labelledby="result-title">
+      <nav id="navigation" aria-label="あそぶばしょ" hidden>
+        <button data-view="home">ホーム</button
+        ><button data-view="friends">なかま</button
+        ><button data-view="battle">じゃんけん</button
+        ><button data-view="relations">つながり</button>
+      </nav>
+      <dialog
+        id="result"
+        aria-labelledby="result-title"
+        aria-describedby="result-body"
+      >
         <h2 id="result-title">けっか</h2>
         <div id="result-body"></div>
         <button id="result-close">つづける</button>

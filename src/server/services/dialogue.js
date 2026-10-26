@@ -316,3 +316,36 @@ function generateDialogueDraft_(book, p) {
     return { status, ...readDialogue_(book) };
   });
 }
+
+// Provider-only status, never included in the game's bootstrap.
+function dialogueGenerationStatus_() {
+  const props = PropertiesService.getScriptProperties();
+  try {
+    const budget = generationBudget_(props);
+    const reservations = Object.keys(props.getProperties()).filter((k) =>
+      k.startsWith("JANKEN_AI_JOB_"),
+    ).length;
+    let reason = "ready";
+    if (props.getProperty("JANKEN_AI_TEXT_ENABLED") !== "true")
+      reason = "disabled";
+    else if (
+      !(props.getProperty("GEMINI_API_KEY") || "").trim() ||
+      props.getProperty("GEMINI_TEXT_MODEL") !== "gemini-3.1-flash-lite"
+    )
+      reason = "configuration";
+    else if (budget.stopped) reason = "stopped";
+    else if (budget.count >= 20) reason = "dailyLimit";
+    else if (reservations >= 200) reason = "reservationLimit";
+    return {
+      allowed: reason === "ready",
+      reason,
+      day: budget.day,
+      used: budget.count,
+      limit: 20,
+      reservations,
+      reservationLimit: 200,
+    };
+  } catch (_) {
+    return { allowed: false, reason: "unavailable" };
+  }
+}

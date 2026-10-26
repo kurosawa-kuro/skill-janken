@@ -56,7 +56,7 @@ function adminApi(request) {
       ok: true,
       requestId: null,
       replayed: false,
-      data: { ...data, datasetId },
+      data: { ...data, datasetId, generation: dialogueGenerationStatus_() },
     };
   } catch (error) {
     return { ok: false, requestId: null, error: publicError_(error) };

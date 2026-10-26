@@ -208,3 +208,9 @@ playerIdはクライアントから受け取らず、初版サーバー内でP00
 ### 管理APIの実装契約
 
 管理画面はWebアプリURLの `?view=admin`。adminApiは `{op,payload}`、4096 UTF-8バイト以下。listのpayloadは空。initializeはdatasetId。generateはdatasetId・requestId（UUID）・slotKey（C01_WIN等）・draftRevision。publishはdatasetId・slotKey・draftRevision・expectedVersion（公開版）・selectedIndices（下書きの0始まりの添字、空配列で採用解除）。全要求で実利用者を認可し、ゲーム版2・保存先を検証する。成功dataはinitialized・drafts・catalog・datasetId、生成ではstatus（generated / failed / unknown）を追加する。任意文・自由プロンプトは受け付けない。
+
+### 実装完了追補（検証は後段）
+
+管理成功dataにgenerationを追加する。allowed、reason（ready / disabled / configuration / stopped / dailyLimit / reservationLimit / unavailable）、取得可能な場合はday・used・limit・reservations・reservationLimitを返す。キー・メール・外部応答は含めず、ゲームapiには返さない。画面の生成可否表示は案内であり、生成時のサーバー側上限判定を省略しない。
+
+ゲームは下部固定ナビ・手動再読込を備える。再送解決後は最新状態を表示し、保存済み結果をモーダルで見せる。通常成功時の追加RPCはなく、タブ復帰・履歴復帰のときだけ状態を同期する。起動時に取得したセリフ集はそのページ内で維持する。

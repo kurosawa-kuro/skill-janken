@@ -92,6 +92,7 @@
       async function sync() {
         if (busy || pending || blocked) throw fail("PENDING_UNRESOLVED");
         busy = true;
+        needsSync = true;
         notify();
         try {
           return await refresh();

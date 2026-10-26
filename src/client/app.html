@@ -11,6 +11,8 @@
       skillId = "S01",
       working = false,
       focusOrigin,
+      focusId,
+      refreshOnReturn = false,
       relationToken = 0;
     function controls() {
       const s = App.commands?.status();
@@ -27,11 +29,14 @@
       });
       $("resend").hidden = !s?.pending || s?.blocked;
       $("resend").disabled = working || s?.busy;
-      $("retry").disabled = working;
+      $("retry").disabled = working || s?.busy;
+      $("refresh-state").disabled =
+        working || !s || s.busy || s.blocked || !!s.pending;
     }
-    function button(text, fn, mutation = false, unavailable = false) {
+    function button(text, fn, mutation = false, unavailable = false, id = "") {
       const b = el("button", "", text);
       b.type = "button";
+      if (id) b.id = id;
       if (mutation) {
         b.dataset.mutation = "true";
         b.dataset.unavailable = String(unavailable);
@@ -114,6 +119,7 @@
             () => change("drawCharacter", {}),
             true,
             !count,
+            "draw-character",
           ),
           el(
             "p",
@@ -168,6 +174,7 @@
         select.addEventListener("change", () => {
           characterId = select.value;
           render();
+          $("battle-character").focus();
         });
         label.append(select);
         view.append(label);
@@ -190,7 +197,17 @@
           radio.addEventListener("change", () => {
             skillId = s.skillId;
           });
-          l.append(radio, el("span", "", s.name + " — " + effects[s.skillId]));
+          const mark = el(
+            "span",
+            "skill-mark " + s.skillId,
+            { S01: "勝", S02: "負", S03: "同" }[s.skillId],
+          );
+          mark.setAttribute("aria-hidden", "true");
+          l.append(
+            radio,
+            mark,
+            el("span", "", s.name + " — " + effects[s.skillId]),
+          );
           field.append(l);
         }
         view.append(field);
@@ -201,6 +218,8 @@
               names[hand],
               () => change("playRound", { characterId, skillId, hand }),
               true,
+              false,
+              "hand-" + hand,
             ),
           );
         view.append(
@@ -408,6 +427,7 @@
     async function change(op, payload) {
       if (working) return;
       focusOrigin = document.activeElement;
+      focusId = focusOrigin?.id;
       working = true;
       controls();
       $("status").textContent = "きろくをのこしているよ…";
@@ -435,10 +455,11 @@
       $("panel").setAttribute("aria-busy", "true");
       $("retry").hidden = true;
       try {
-        let response;
+        let response, recovered;
         if (resume) {
           const result = await App.commands.retry();
           response = result.latest;
+          recovered = result.mutation;
         } else if (App.commands) {
           response = await App.commands.sync();
         } else {
@@ -458,6 +479,7 @@
           : s.pending
             ? "とどいたか、つづきのきろくをかくにんしよう"
             : "きろくをよめたよ";
+        if (recovered) showResult(recovered);
       } catch (e) {
         failure(e);
       } finally {
@@ -472,11 +494,46 @@
         b.addEventListener("click", () => navigate(b.dataset.view)),
       );
     $("retry").addEventListener("click", () => load());
-    $("resend").addEventListener("click", () => load(true));
+    $("resend").addEventListener("click", () => {
+      focusOrigin = document.activeElement;
+      focusId = focusOrigin?.id;
+      load(true);
+    });
+    $("refresh-state").addEventListener("click", () => load());
     $("result-close").addEventListener("click", () => $("result").close());
     $("result").addEventListener("close", () => {
-      if (focusOrigin?.isConnected) focusOrigin.focus();
+      const origin = focusOrigin?.isConnected
+        ? focusOrigin
+        : document.getElementById(focusId || "");
+      if (origin && !origin.disabled && !origin.hidden) origin.focus();
       else $("navigation").querySelector('[aria-current="page"]').focus();
+      syncOnReturn();
+    });
+    function syncOnReturn() {
+      const status = App.commands?.status();
+      if (
+        !refreshOnReturn ||
+        document.hidden ||
+        working ||
+        $("result").open ||
+        !status ||
+        status.busy ||
+        status.blocked ||
+        status.pending
+      )
+        return;
+      refreshOnReturn = false;
+      void load();
+    }
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) refreshOnReturn = true;
+      else syncOnReturn();
+    });
+    window.addEventListener("pageshow", (event) => {
+      if (event.persisted) {
+        refreshOnReturn = true;
+        syncOnReturn();
+      }
     });
     load();
   })();

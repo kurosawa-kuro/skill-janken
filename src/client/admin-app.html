@@ -7,7 +7,8 @@
     let state,
       busy = false,
       pending = null,
-      blocked = false;
+      blocked = false,
+      needsReload = false;
     try {
       const text = sessionStorage.getItem(KEY);
       if (text) {
@@ -45,12 +46,36 @@
         b.disabled =
           busy ||
           blocked ||
+          ((!state || needsReload) && b.id !== "admin-refresh") ||
+          (b.dataset.generate === "true" &&
+            state?.generation?.allowed === false) ||
           (!!pending && b.id !== "admin-resume" && b.id !== "admin-refresh");
       });
       $("admin-resume").hidden = !pending || blocked;
     }
     function display() {
       $("admin-init").hidden = state.initialized;
+      const generation = state.generation;
+      const reasons = {
+        ready: "候補を生成できます。",
+        disabled: "AI生成は無効です。採用済みの文は使えます。",
+        configuration: "生成設定が不足しています。提供者が設定してください。",
+        stopped: "本日の生成は停止中です。翌日以降に一覧を読み直してください。",
+        dailyLimit: "本日の生成上限に達しました。",
+        reservationLimit:
+          "生成記録の上限に達しました。提供者が記録を保管して対応してください。",
+        unavailable: "生成状態を読み取れません。一覧を読み直してください。",
+      };
+      $("admin-generation").textContent = generation
+        ? (reasons[generation.reason] || reasons.unavailable) +
+          (Number.isInteger(generation.used)
+            ? " 本日 " +
+              generation.used +
+              " / " +
+              generation.limit +
+              " 回（日本時間）。"
+            : "")
+        : "生成状態を確認できません。一覧を読み直してください。";
       const slots = $("admin-slots");
       slots.replaceChildren();
       if (!state.initialized) return;
@@ -74,6 +99,7 @@
         if (published)
           published.texts.forEach((t) => box.append(el("p", "bubble", t)));
         const generate = el("button", "", "候補を生成");
+        generate.dataset.generate = "true";
         generate.addEventListener("click", () =>
           run(async () => {
             const request = {
@@ -172,6 +198,8 @@
             "AI_DISABLED",
             "AI_LIMIT",
             "AI_UNAVAILABLE",
+            "DATASET_MISMATCH",
+            "LEGACY_DATA_READ_ONLY",
           ].includes(e.code)
         ) {
           try {
@@ -192,6 +220,7 @@
         "処理中です。生成には時間がかかることがあります。";
       try {
         state = await work();
+        needsReload = false;
         display();
         $("admin-status").textContent =
           state.status === "generated"
@@ -202,6 +231,7 @@
                 ? "この要求は結果未確定です。自動で再生成しません。下書きを確認してください。"
                 : "読み込み・保存を確認しました。公開した文は次回ゲーム起動から使われます。";
       } catch (e) {
+        needsReload = true;
         $("admin-status").textContent =
           e.message || "確認できませんでした。一覧を読み直してください。";
       } finally {

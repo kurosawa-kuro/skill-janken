@@ -111,6 +111,8 @@ try {
   await page.locator("#resend").click();
   await expect(page.locator("#resend")).not.toBeVisible();
   assert.equal(gas.sheets.get("Actions").rows.length, count);
+  await expect(page.locator("#result")).toBeVisible();
+  await page.locator("#result-close").click();
   assert.deepEqual(
     calls.filter((r) => r.requestId === discarded.requestId),
     [discarded, discarded],

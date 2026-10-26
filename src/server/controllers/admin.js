@@ -72,3 +72,32 @@ function activateLab_(nextId, expectedId) {
     };
   });
 }
+
+// Editor-only configuration; never reads or returns the API key.
+function configureDialogue_(email, enabled = false) {
+  if (
+    typeof email !== "string" ||
+    !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ||
+    typeof enabled !== "boolean"
+  )
+    throw new AppError_("INVALID_ARGUMENT");
+  const actual = Session.getActiveUser().getEmail();
+  if (!actual || actual.toLowerCase() !== email.toLowerCase())
+    throw new AppError_("FORBIDDEN");
+  return withLock_(() => {
+    const props = PropertiesService.getScriptProperties();
+    if (enabled && !(props.getProperty("GEMINI_API_KEY") || "").trim())
+      throw new AppError_("AI_UNAVAILABLE");
+    props.setProperty("JANKEN_AI_TEXT_ENABLED", "false");
+    props.setProperty("JANKEN_ADMIN_EMAIL", email.toLowerCase());
+    props.setProperty("GEMINI_TEXT_MODEL", "gemini-3.1-flash-lite");
+    props.setProperty("JANKEN_AI_TEXT_ENABLED", String(enabled));
+    if (
+      props.getProperty("JANKEN_ADMIN_EMAIL") !== email.toLowerCase() ||
+      props.getProperty("GEMINI_TEXT_MODEL") !== "gemini-3.1-flash-lite" ||
+      props.getProperty("JANKEN_AI_TEXT_ENABLED") !== String(enabled)
+    )
+      throw new AppError_("DATA_INTEGRITY_ERROR");
+    return { configured: true, generationEnabled: enabled };
+  });
+}

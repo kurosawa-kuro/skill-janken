@@ -8,8 +8,8 @@ export async function startPreview(port = 4173) {
   gas.props.set("JANKEN_ADMIN_EMAIL", "owner@example.com");
   const html = (admin) =>
     gas.render({ parameter: { view: admin ? "admin" : "" } }).replace(
-      "<body>",
-      `<body>
+      /<body([^>]*)>/,
+      `<body$1>
     <aside style="padding:8px;text-align:center;background:#fff0cb">ローカルプレビュー・テストデータ</aside>
     <script>
       window.google = {script:{run:{

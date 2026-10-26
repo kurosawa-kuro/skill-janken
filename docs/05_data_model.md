@@ -175,3 +175,7 @@ inputJsonは `{op,expectedVersion,payload}`。合成材料をソートした後�
 旧画像キャッシュの仕様は廃止。標準カードの表示に画像RPCや画像設定を必要としない。
 
 新規datasetIdはブックID文字列のcanonical JSONをSHA-256化した識別子。実IDを返さず、変更要求とinputJsonに含める。通常の初回成功は応答stateで表示を更新し、追加bootstrapを行わない。手動再送・replayed=true・競合時はbootstrapで最新化する。旧版1のハッシュにはdatasetIdを追加しない。
+
+### 画面復帰時の同期
+
+タブ復帰・履歴復帰・手動再読込では同期開始時点でneedsSyncを立てる。取得に失敗したら旧状態からの新規変更を止め、読取りの手動再試行を案内する。未解決の保留要求は自動送信しない。手動再送成功時は最新stateと保存済み結果を分けて表示する。
