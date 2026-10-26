@@ -4,6 +4,6 @@
 #   make render-project-config
 
 projectName: skill-janken
-repoRoot: C:\Users\owner\.ssh\dev\skill-janken
+repoRoot: C:\Users\owner\.ssh\dev\gas\skill-janken
 workspaceRoot: C:\Users\owner\.ssh\dev
 homeDir: C:\Users\owner
