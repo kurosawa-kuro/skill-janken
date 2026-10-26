@@ -6,7 +6,7 @@
 
 **スキルじゃんけんラボ**は、仲間集め・CPUじゃんけん・固定スキル合成から、1対多・多対多のデータのつながりを学ぶWebアプリ。GAS / HTML Service / JavaScript / Sheets / Driveを使い、Geminiは提供者の画像事前制作に限定する。
 
-初版は提供者の管理端末・本人限定公開・P001の1プレイヤー・行動200件まで。仲間3体、スキル4種、固定レシピ1件、5画面＋結果モーダルを約1日（8時間）の目標で作る。2026年10月26日、①土台作成は完了。②ではSheetsの8表初期化・読込、非公開Driveの検証とWebP登録・取得、Gemini画像生成用アダプターを実装した。専用GASの本人限定試験配置で初期記録の表示と再読込を確認済み。テスト用WebPの実配信を確認済み。Geminiの認証・モデル一覧取得は成功したが画像生成はHTTP 429。提供者から無料プラン／未確認との回答があり、課金・割当の確認待ち。別アカウント拒否は未確認。ゲーム機能・最終受入は未完了。
+初版は提供者の管理端末・本人限定公開・P001の1プレイヤー・行動200件まで。仲間3体、スキル4種、固定レシピ1件、5画面＋結果モーダルを約1日（8時間）の目標で作る。2026年10月26日、①土台作成は完了。②ではSheetsの8表初期化・読込、非公開Driveの検証とWebP登録・取得、Gemini画像生成用アダプターを実装した。専用GASの本人限定試験配置で初期記録の表示と再読込を確認済み。テスト用WebPの実配信を確認済み。Geminiの認証・モデル一覧取得は成功したが画像生成はHTTP 429。提供者から無料プラン／未確認との回答があり、課金・割当の確認待ち。別アカウント拒否は未確認。ゲーム機能・最終受入は未完了。③ではActions追記・最新状態復元・同一要求の再送・保留要求の復元・画像キャッシュ・検証付きバックアップコピーを実装した。ゲームの変更APIと5画面は後続。③の画像生成から採用までの確認は②のGemini HTTP 429解消待ち。
 
 ## Source of Truth
 
@@ -27,11 +27,11 @@
 
 ## コマンド
 
-Node.js 22以上。ルートで `npm ci`、必要なら `npx playwright install chromium`、`npm run check`。checkは整形確認・26件のNodeテスト・ビルド・Chromium確認を行う。`npm run preview` は127.0.0.1:4173の仮データ表示。Makefileはnpmのラッパー。`npm run build` は許可リストの19実行ファイルと.claspignoreをdistへ出力するだけで、実配置は行わない。
+Node.js 22以上。ルートで `npm ci`、必要なら `npx playwright install chromium`、`npm run check`。checkは整形確認・40件のNodeテスト・ビルド・Chromium確認を行う。`npm run preview` は127.0.0.1:4173の仮データ表示。Makefileはnpmのラッパー。`npm run build` は許可リストの24実行ファイルと.claspignoreをdistへ出力するだけで、実配置は行わない。
 
 ## アーキテクチャ
 
-- GASソースは `src/server/` の通常JS、画面は `src/client/`。controllers・core・application・adaptersに分け、ゲーム固有のRulesと保存は後続実装。実配置用のアダプターは未接続時にエラーとなり、仮データへ自動切替しない。Nodeのscripts/testsはES modulesで、配布物に含めない。
+- GASソースは `src/server/` の通常JS、画面は `src/client/`。controllers・core・application・adaptersに分け、ゲーム固有のRulesは後続実装。保存はdb/actions.jsのcommitAction_へ状態遷移を注入する。実配置用のアダプターは未接続時にエラーとなり、仮データへ自動切替しない。Nodeのscripts/testsはES modulesで、配布物に含めない。
 - `doGet()` でHTMLを配信し、画面通信は `google.script.run` → `api(request)`。独立RESTサーバーは設けず、内部・管理関数は末尾 `_` とする。
 - Sheetsは `Players` / `Characters` / `Skills` / `CharacterSkills` / `Recipes` / `Assets` / `Actions` / `Settings` の8シート。状態は最新Actions行の `stateJson`、0件時のみPlayersの初期JSONを使う。
 - GAS実行時のAPIキー・画像モデルID・Spreadsheet ID・DriveフォルダーIDはScript Propertiesで管理する。`env/` / `doppler.yaml` は既存の開発用ひな形であり、GASへの同期を前提にしない。秘密情報をコミット・画面配信・ログ出力しない。

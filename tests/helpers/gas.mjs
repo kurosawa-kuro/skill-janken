@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import vm from "node:vm";
+import { createHash, randomUUID } from "node:crypto";
 import { ROOT, walkFiles } from "../../scripts/files.mjs";
 
 // Extracted pattern from photo-diary + english-trainer: one GAS-like VM global,
@@ -24,6 +25,12 @@ export function createGas({
       }),
     },
     Utilities: {
+      getUuid: randomUUID,
+      DigestAlgorithm: { SHA_256: "sha256" },
+      Charset: { UTF_8: "utf8" },
+      computeDigest: (algorithm, text, encoding) => [
+        ...createHash(algorithm).update(text, encoding).digest(),
+      ],
       newBlob: (text) => ({ getBytes: () => [...Buffer.from(text, "utf8")] }),
     },
   });

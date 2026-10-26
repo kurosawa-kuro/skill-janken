@@ -16,7 +16,7 @@
 | 選択中の仲間・スキル | 端末内の表示状態。各対戦要求で送信し、サーバーで検証 |
 | ローカル開発用設定 | 既存env/・doppler.yamlはひな形。GASへの同期は未実装。秘密情報はコミットしない |
 
-①土台作成で設定読込名を `JANKEN_SPREADSHEET_ID` / `JANKEN_DRIVE_FOLDER_ID` / `GEMINI_API_KEY` / `GEMINI_IMAGE_MODEL` と定義した。②で新規8表の作成・初期マスター検証・読取とAssets登録を実装した。初期化済みブックは検証のみで上書きしない。現段階はActionsが0件のデータだけを扱い、行があればDATA_INTEGRITY_ERRORで停止する。Actionsの追記・最新状態復元は③以降で実装する。
+①土台作成で設定読込名を `JANKEN_SPREADSHEET_ID` / `JANKEN_DRIVE_FOLDER_ID` / `GEMINI_API_KEY` / `GEMINI_IMAGE_MODEL` と定義した。②で新規8表の作成・初期マスター検証・読取とAssets登録を実装した。初期化済みブックは検証のみで上書きしない。③で全Actionsの検証・追記・最新状態復元・同一要求の再送を実装した。0件時だけ初期状態を使い、不正行があればDATA_INTEGRITY_ERRORで停止する。ゲーム固有の操作生成・画面は後続。
 
 ## 保存方針
 
@@ -163,3 +163,11 @@ AssetsのREADY画像だけをマスター参照の許可IDで取得する。採�
 ## 関連タスク
 
 [MVP実装計画](tasks/02_backlog/mvp-implementation.md)で初期データ・保存・再送の実装を追跡する。schema・設定・永続化方式の変更には目的、互換性、移行・復元、AC09〜AC13・AC21〜AC23への影響を記録する。
+
+### ③の正規化・容量・画像キャッシュの実装詳細
+
+inputJsonは `{op,expectedVersion,payload}`。合成材料をソートした後、オブジェクトキーを再帰的に辞書順へ整列したJSONをUTF-8でSHA-256化する。配列は材料の正規化以外は順序を保持し、requestIdはハッシュに含めない。UUIDの照合は大文字小文字を区別しない。要求はJSON.stringify後の4096バイト以下、各JSONセルは8192バイト以下で検証する（KB表記の実装値）。所有・習得ID配列は一意かつ整列済み。時刻はUTCのミリ秒付きISO文字列。
+
+全行のseq、actionId/requestId一意、schema/master版、入力ハッシュ、結果と次状態の差分を毎回検証する。書込前にも全体を検証し、setValues→flush→対象行照合→全体再読込をロック内で行う。Sheetsの手編集との競合や原子的トランザクションを保証するものではない。
+
+画像キャッシュは最大7件・assetId＋versionの画面内メモリのみ。同時取得はまとめ、各表示時にgetAssetで版を再確認する。現行APIには画像版だけの取得がないため、順次表示のRPCやbase64転送は省略しない。版更新・取得失敗・デコード失敗時は古いキャッシュを破棄する。

@@ -11,10 +11,13 @@ export const RUNTIME_FILES = [
   "server/core/errors.js",
   "server/core/request.js",
   "server/core/settings.js",
+  "server/core/canonical.js",
   "server/adapters/external.js",
   "server/application/services.js",
   "server/db/schema.js",
   "server/db/repository.js",
+  "server/db/actions.js",
+  "server/controllers/backup.js",
   "server/core/lock.js",
   "server/services/assets.js",
   "server/services/gemini.js",
@@ -23,6 +26,8 @@ export const RUNTIME_FILES = [
   "client/styles.html",
   "client/core/dom.html",
   "client/core/api.html",
+  "client/core/pending.html",
+  "client/core/assets.html",
   "client/app.html",
 ];
 

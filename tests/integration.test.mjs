@@ -16,7 +16,7 @@ test("real repository adapter maps typed initial tables to the public contract",
   assert.equal(JSON.stringify(response).includes("test-sheet"), false);
 });
 
-test("repository refuses broken headers, blank keys, changed types, or existing actions", () => {
+test("repository refuses broken headers, blank keys, changed types, or invalid actions", () => {
   const corruptions = [
     (gas) => gas.sheets.get("Assets").rows.splice(2, 0, Array(11).fill("")),
     (gas) => gas.sheets.get("Players").rows[0].reverse(),
@@ -197,6 +197,8 @@ test("Gemini extracts image parts, persists source metadata, and refuses acciden
     bytes,
     mime,
     name,
+    getBytes: () =>
+      typeof bytes === "string" ? [...Buffer.from(bytes, "utf8")] : bytes,
   });
   gas.context.imageFolder_ = () => ({
     createFile: () => ({ getId: () => "private-source-id" }),

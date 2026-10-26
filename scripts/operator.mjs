@@ -11,8 +11,32 @@ const commands = {
   setup: "setupLab_()",
   generate: "generateFirstAsset_()",
   inspect: "inspectGemini_()",
+  backup: "backupLab_()",
+  verify: `withLock_(() => {
+    // Isolated test copy only. This producer is never deployed with the app.
+    const original = readSnapshot_();
+    const initialDigest = payloadHash_(original.tables);
+    const isolated = backupLab_();
+    const book = SpreadsheetApp.openById(isolated.spreadsheetId);
+    const request = { op: "playRound", requestId: Utilities.getUuid(), expectedVersion: original.data.state.version, payload: { characterId: "C01", skillId: "S01", hand: "rock" } };
+    const first = commitAction_(request, state => ({
+      state: { ...state, version: state.version + 1, points: state.points + 1 },
+      result: { characterId: "C01", skillId: "S01", playerHand: "rock", cpuHand: "rock", outcome: "DRAW", basePoints: 1, bonusPoints: 0, earnedPoints: 1 }
+    }), book);
+    const replay = commitAction_(request, () => { throw Error("Unexpected second producer"); }, book);
+    const backup = verifiedDatabaseCopy_(isolated.spreadsheetId, "probe-backup");
+    const restored = restoreBackupToCopy_(backup.spreadsheetId);
+    const unchanged = payloadHash_(readSnapshot_().tables) === initialDigest;
+    if (!replay.replayed || replay.version !== first.version || backup.digest !== restored.digest || !unchanged) throw Error("Probe failed");
+    const result = { check: "isolated-journal-backup-restore", isolatedId: isolated.spreadsheetId, backupId: backup.spreadsheetId, restoredId: restored.spreadsheetId, version: first.version, replayed: replay.replayed, digestMatch: true, originalUnchanged: unchanged };
+    console.log(JSON.stringify(result));
+    return result;
+  })`,
 };
 let expression = commands[operation];
+if (operation === "restore" && /^[A-Za-z0-9_-]+$/.test(assetId || "")) {
+  expression = `restoreBackupToCopy_(${JSON.stringify(assetId)})`;
+}
 if (
   operation === "register" &&
   /^(A_C0[1-3]|A_S0[1-4])$/.test(assetId || "") &&
@@ -22,8 +46,11 @@ if (
 }
 if (!expression || !connection.scriptId || connection.rootDir !== "dist")
   throw new Error(
-    "Usage: node scripts/operator.mjs setup|inspect|generate|register A_C01 FILE_ID (ordinary connection must target dist)",
+    "Usage: node scripts/operator.mjs setup|inspect|generate|backup|verify|restore BACKUP_ID|register A_C01 FILE_ID (ordinary connection must target dist)",
   );
+if (["backup", "restore"].includes(operation)) {
+  expression = `(() => { const result = ${expression}; console.log(JSON.stringify(result)); return result; })()`;
+}
 const target = join(ROOT, "artifacts/operator");
 for (const file of RUNTIME_FILES) {
   mkdirSync(dirname(join(target, file)), { recursive: true });

@@ -22,12 +22,16 @@
         <div id="summary" hidden></div>
         <div id="companion" hidden></div>
         <button type="button" id="retry" hidden>もういちどよむ</button>
+        <button type="button" id="resend" hidden>
+          つづきのきろくをかくにん
+        </button>
       </section>
     </main>
     <script>
       window.CONFIG = <?!= serializeForScript_(config) ?>;
     </script>
     <?!= include_("client/core/dom") ?> <?!= include_("client/core/api") ?> <?!=
-    include_("client/app") ?>
+    include_("client/core/pending") ?> <?!= include_("client/core/assets") ?>
+    <?!= include_("client/app") ?>
   </body>
 </html>

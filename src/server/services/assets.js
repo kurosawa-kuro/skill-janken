@@ -99,7 +99,7 @@ function validateWebp_(bytes, mimeType) {
 
 function readAsset_(assetId) {
   try {
-    const { tables } = initialSnapshot_();
+    const { tables } = readSnapshot_();
     const row = tables.Assets.find((item) => item.assetId === assetId);
     if (!row || row.status !== "READY" || row.version < 1)
       throw new AppError_("ASSET_UNAVAILABLE");

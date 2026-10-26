@@ -1,24 +1,34 @@
-// Real read-only adapters. Actions mutations remain disabled until phase 3.
+// Mutation persistence is internal; public GameService routes are added later.
 function createRepository_() {
   return {
     bootstrap() {
-      return { data: initialSnapshot_().data, version: 0 };
+      const { data } = readSnapshot_();
+      return { data, version: data.state.version };
     },
     getRelations() {
-      const data = initialSnapshot_().data;
+      const { data, actions } = readSnapshot_();
       return {
         data: {
           player: data.player,
-          recentActions: [],
+          recentActions: actions
+            .slice(-10)
+            .reverse()
+            .map(({ actionId, type, createdAt, result }) => ({
+              actionId,
+              type,
+              createdAt,
+              result,
+            })),
           characters: data.characters,
           skills: data.skills,
           characterSkills: data.characterSkills,
           ownedCharacterIds: data.state.ownedCharacterIds,
           unlockedSkillIds: data.state.unlockedSkillIds,
         },
-        version: 0,
+        version: data.state.version,
       };
     },
+    commit: (request, produce) => commitAction_(request, produce),
   };
 }
 
@@ -42,7 +52,7 @@ function createGemini_() {
 function generateAsset_(assetId) {
   if (!isId_(assetId)) throw new AppError_("INVALID_ARGUMENT");
   return withLock_(() => {
-    const row = initialSnapshot_().tables.Assets.find(
+    const row = readSnapshot_().tables.Assets.find(
       (item) => item.assetId === assetId,
     );
     if (!row || row.status !== "DRAFT" || row.sourceFileId)

@@ -42,11 +42,11 @@ flowchart LR
 | src/server/application/services.js | 読取りサービスへの配線。GameServiceの抽選・対戦・合成は後続実装 |
 | Rules（後続） | 勝敗、ポイント、レシピ正規化の副作用のない関数 |
 | src/server/adapters/external.js | Repository・Assets・Geminiの実アダプターへの配線。設定不足時はエラーで停止 |
-| src/server/controllers/admin.js・core/lock.js | 新規8表作成、排他、WebP登録。設定済みブックを上書きしない。バックアップは後続 |
-| src/server/db/schema.js・repository.js | 型・ヘッダー・初期マスターを検証し公開項目だけ返す。Actionsが0件の初期状態のみ対応 |
+| src/server/controllers/admin.js・core/lock.js | 新規8表作成、排他、WebP登録。設定済みブックを上書きしない。controllers/backup.jsは別ブックへの検証付きコピー・復元 |
+| src/server/db/schema.js・repository.js | 型・ヘッダー・初期マスターを検証し公開項目だけ返す。全Actionsを検証し最新stateを復元。db/actions.jsでロック内の追記・再送・上限判定を実装 |
 | src/server/services/assets.js・gemini.js | 非公開所有確認、WebP寸法・容量検証、画像パート抽出、生成元のDRAFT保存 |
 | src/client/index.html・styles.html | 読込・初期記録・失敗・再試行の最小画面。5画面は後続 |
-| src/client/core/dom.html・api.html・app.html | DOM、安全な文字表示、全応答を保持するRPC、初期読込と所有仲間1枚の画像取得・失敗時の名前表示。変更の保留要求・結果演出は後続 |
+| src/client/core/dom.html・api.html・app.html | DOM、安全な文字表示、全応答を保持するRPC、初期読込と所有仲間1枚の画像取得・失敗時の名前表示。core/pending.htmlは送信前保存・手動再送・最新化、core/assets.htmlは版別メモリキャッシュ。ゲームの結果演出は後続 |
 | scripts/・tests/ | ローカルビルド・プレビュー・GASモック・ブラウザ検証。GAS配置には含めない |
 
 内部・管理関数は末尾 `_` を付け、画面から呼ぶ公開関数は `api` に集約する。末尾 `_` の関数は `google.script.run` から呼び出せない。ただし、これは公開範囲の設定や入力検証の代替ではない。[公式通信ガイド](https://developers.google.com/apps-script/guides/html/communication)。
@@ -198,3 +198,9 @@ playerIdはクライアントから受け取らず、初版サーバー内でP00
 ## 開発ガイドとの関係
 
 共通作業方針は[AGENTS.md](../AGENTS.md)、Claude Code固有の手順は[CLAUDE.md](../CLAUDE.md)を参照する。構造・IFの変更は[MVP実装計画](tasks/02_backlog/mvp-implementation.md)等でScopeと検証方法を決め、確定した判断を本書または `docs/adr/` に残す。
+
+### ゲーム実装へ渡す境界（③）
+
+`commitAction_(request, produce, book?)` は入力検証→ScriptLock→全表読込→requestId→version→200件上限の順に判定し、初回だけ `produce(state, normalizedPayload, tables)` を呼ぶ。戻り値は `{result,state}`。Actionsの保存済み結果と状態差分の検証は `validateStoredTransition_` が行い、乱数は引かない。後続GameServiceは所有・習得・適性・残高等の業務エラーを判定して実結果を生成し、この境界へ接続する。ゲーム3操作の公開サービスは現時点で停止するため、疎通用加点APIは存在しない。
+
+クライアントは `App.commands.start(op,payload,expectedVersion)`、`retry()`、`sync()` を使用する。startはbootstrap同期後のみ許可し、保留中・通信中・保存領域利用不可・未同期は変更ボタンを無効にする。retryは当該操作の結果と最新bootstrapを分けて返す。演出は保存成功を確認してから行う。

@@ -4,8 +4,8 @@ function setupLab_() {
     imageFolder_();
     const properties = PropertiesService.getScriptProperties();
     if (properties.getProperty("JANKEN_SPREADSHEET_ID")) {
-      initialSnapshot_();
-      console.log("Existing initial database verified; no data overwritten.");
+      readSnapshot_();
+      console.log("Existing database verified; no data overwritten.");
       return { created: false, tables: 8 };
     }
     const book = SpreadsheetApp.create("skill-janken-lab-db");
@@ -33,7 +33,7 @@ function setupLab_() {
           .setValues(rows[name]);
     }
     SpreadsheetApp.flush();
-    initialSnapshot_();
+    readSnapshot_();
     console.log("Initial database verified: 8 tables, 0 actions.");
     return { created: true, tables: 8 };
   });
@@ -41,7 +41,7 @@ function setupLab_() {
 
 function updateAssetRow_(assetId, changes) {
   requireWriteLock_();
-  const { tables } = initialSnapshot_();
+  const { tables } = readSnapshot_();
   const index = tables.Assets.findIndex((row) => row.assetId === assetId);
   if (index < 0) throw new AppError_("INVALID_ARGUMENT");
   const row = { ...tables.Assets[index], ...changes };
@@ -59,7 +59,7 @@ function updateAssetRow_(assetId, changes) {
 
 function registerWebp_(assetId, fileId) {
   return withLock_(() => {
-    const { tables } = initialSnapshot_();
+    const { tables } = readSnapshot_();
     const row = tables.Assets.find((item) => item.assetId === assetId);
     if (!row) throw new AppError_("INVALID_ARGUMENT");
     const file = privateImageFile_(fileId),

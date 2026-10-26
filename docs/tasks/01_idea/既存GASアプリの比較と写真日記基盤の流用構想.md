@@ -122,7 +122,7 @@
 |---|---|---|
 | ① | [土台作成](../05_done/foundation-01-scaffold.md) | 最小画面・API・アダプター境界とローカル検証がある |
 | ② | [GAS・Sheets・Drive・Gemini連携疎通](../03_active/foundation-02-integration.md) | 実環境のbootstrap、非公開画像表示、Gemini画像1枚の生成・保存が通る |
-| ③ | [土台拡張](../02_backlog/foundation-03-hardening.md) | Actions保存・再送・画像管理・復元の共通基盤が使える |
+| ③ | [土台拡張](../03_active/foundation-03-hardening.md) | Actions保存・再送・画像管理・復元の共通基盤が使える |
 
 実装開始依頼により、①は2026-10-26に実装・ローカル検証を完了し05_doneへ移動した。次は②の実サービス疎通。本書の比較表・コード量は調査時点の記録として残し、具体的な作業チェックリスト・証跡・現在の進捗は各タスクに記録する。
 

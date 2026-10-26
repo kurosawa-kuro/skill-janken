@@ -63,12 +63,12 @@
 
 ## スキルじゃんけんラボの実装バックログ
 
-企画・仕様・設計v1.0は[製品文書の索引](../00_index.md)から参照する。①完了。②の専用GAS・Sheets初期化と初期画面表示を実測済み。画像実疎通・ゲーム実装・最終受入は未完了。
+企画・仕様・設計v1.0は[製品文書の索引](../00_index.md)から参照する。①完了。②はGemini画像生成と別アカウント確認待ち。利用者の「次進んで」により、③の外部課金に依存しない保存・再送・復元を先行した。実装作業の対象は③、②は残条件の追跡として保持する。ゲーム実装・最終受入は未完了。
 
 | ファイル | 用途 |
 |---|---|
 | [02_backlog/mvp-implementation.md](02_backlog/mvp-implementation.md) | MVP全体の親タスク。基盤3段階の進行と、後続のゲーム実装・最終受入 |
-| [③ 土台拡張](02_backlog/foundation-03-hardening.md) | ②完了後。Actions保存・再送・画像管理・復元の基盤を整備 |
+| [③ 土台拡張](03_active/foundation-03-hardening.md) | Actions保存・再送・画像管理・復元の基盤を実装・検証。生成画像の一連確認は継続待ち |
 
 ## アイディア
 
@@ -80,10 +80,11 @@
 
 | ファイル | 用途 |
 |---|---|
-| [② GAS・Sheets・Drive・Gemini連携疎通](03_active/foundation-02-integration.md) | 実装・実疎通を進行中。Drive配信済み、Gemini画像生成HTTP 429で課金・割当の確認待ち |
+| [② GAS・Sheets・Drive・Gemini連携疎通](03_active/foundation-02-integration.md) | 外部確認待ち。Drive配信済み、Gemini画像生成HTTP 429と別アカウント確認を残す |
+| [③ 土台拡張](03_active/foundation-03-hardening.md) | 保存・再送・復元基盤を実装・検証しWeb v2へ配置。生成画像の一連確認は未完了 |
 | [03_active/refactoring-candidates.md](03_active/refactoring-candidates.md) | 残りのクリーンアップ候補 |
 
-基盤は①→②→③の順に実行し、同時に進める実装タスクは1件とする。①は2026-10-26に完了。②は初期記録まで実疎通済み、全経路確認は未完了。
+基盤は①→②→③を基本順とし、同時に進める実装タスクは1件とする。今回は利用者の指示により、②の外部確認待ちを記録したまま③の独立部分を先行した。①は完了、②③は未達の画像確認を残して保持する。
 
 ## 完了
 
@@ -115,4 +116,4 @@
 ## Notes
 ```
 
-進行中の実装作業は[② 連携疎通](03_active/foundation-02-integration.md)、全体計画は[MVP親タスク](02_backlog/mvp-implementation.md)、既存のクリーンアップ候補は[03_active/refactoring-candidates.md](03_active/refactoring-candidates.md)で管理する。
+進行中の実装作業は[③ 土台拡張](03_active/foundation-03-hardening.md)。外部確認待ちは[② 連携疎通](03_active/foundation-02-integration.md)、全体計画は[MVP親タスク](02_backlog/mvp-implementation.md)、既存のクリーンアップ候補は[03_active/refactoring-candidates.md](03_active/refactoring-candidates.md)で管理する。

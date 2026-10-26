@@ -1,0 +1,156 @@
+<script>
+  // Adapted from ai-english-trainer/app.html: persist before sending.
+  // Unlike the donor, storage failure blocks writes instead of being ignored.
+  App.pending = (() => {
+    const KEY = "skill-janken-pending-v1";
+    function create({
+      rpc = (request) => App.api.call(request),
+      storage,
+      uuid = () => crypto.randomUUID(),
+      changed = () => {},
+    } = {}) {
+      let pending = null,
+        busy = false,
+        blocked = false,
+        needsSync = true;
+      const status = () => ({
+        pending: pending && JSON.parse(JSON.stringify(pending)),
+        busy,
+        blocked,
+        needsSync,
+      });
+      const notify = () => changed(status());
+      const fail = (code) => ({
+        kind: "local",
+        code,
+        message: "きろくをかくにんしてね",
+      });
+      function valid(request) {
+        if (
+          !request ||
+          Object.keys(request).sort().join() !==
+            "expectedVersion,op,payload,requestId" ||
+          !["drawCharacter", "playRound", "synthesize"].includes(request.op) ||
+          typeof request.requestId !== "string" ||
+          !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+            request.requestId,
+          ) ||
+          !Number.isSafeInteger(request.expectedVersion) ||
+          request.expectedVersion < 0 ||
+          !request.payload ||
+          typeof request.payload !== "object" ||
+          Array.isArray(request.payload) ||
+          new TextEncoder().encode(JSON.stringify(request)).length > 4096
+        )
+          throw fail("PENDING_INVALID");
+      }
+      try {
+        storage = storage || window.sessionStorage;
+        const text = storage.getItem(KEY);
+        if (text !== null) {
+          if (new TextEncoder().encode(text).length > 4096)
+            throw fail("PENDING_INVALID");
+          pending = JSON.parse(text);
+          valid(pending);
+        }
+      } catch (_) {
+        blocked = true;
+      }
+      function clear() {
+        try {
+          storage.removeItem(KEY);
+          pending = null;
+        } catch (_) {
+          blocked = true;
+          throw fail("STORAGE_UNAVAILABLE");
+        }
+      }
+      async function refresh() {
+        const response = await rpc({ op: "bootstrap", payload: {} });
+        if (
+          !Number.isSafeInteger(response.version) ||
+          response.version !== response.data?.state?.version
+        )
+          throw fail("INVALID_RESPONSE");
+        needsSync = false;
+        return response;
+      }
+      async function sync() {
+        if (busy || pending || blocked) throw fail("PENDING_UNRESOLVED");
+        busy = true;
+        notify();
+        try {
+          return await refresh();
+        } finally {
+          busy = false;
+          notify();
+        }
+      }
+      async function retry() {
+        if (busy || blocked || !pending) throw fail("PENDING_UNRESOLVED");
+        busy = true;
+        notify();
+        let mutation;
+        try {
+          try {
+            mutation = await rpc(JSON.parse(JSON.stringify(pending)));
+            if (
+              mutation.requestId?.toLowerCase() !==
+                pending.requestId.toLowerCase() ||
+              mutation.version !== pending.expectedVersion + 1 ||
+              mutation.data?.state?.version !== mutation.version ||
+              !mutation.data?.result
+            )
+              throw fail("INVALID_RESPONSE");
+          } catch (error) {
+            // Integrity/conflict-of-ID/unknown failures keep the original request.
+            const definite = [
+              "INVALID_ARGUMENT",
+              "VERSION_CONFLICT",
+              "OP_LIMIT",
+              "CHARACTER_NOT_OWNED",
+              "SKILL_NOT_AVAILABLE",
+              "ALL_OWNED",
+              "RECIPE_NOT_FOUND",
+              "INSUFFICIENT_POINTS",
+              "ALREADY_UNLOCKED",
+            ];
+            if (error.kind === "business" && definite.includes(error.code)) {
+              clear();
+              needsSync = true;
+              try {
+                error.latest = await refresh();
+              } catch (_) {}
+            }
+            throw error;
+          }
+          clear();
+          needsSync = true;
+          return { mutation, latest: await refresh() };
+        } finally {
+          busy = false;
+          notify();
+        }
+      }
+      async function start(op, payload, expectedVersion) {
+        if (busy || pending || blocked || needsSync)
+          throw fail("PENDING_UNRESOLVED");
+        const request = JSON.parse(
+          JSON.stringify({ op, payload, expectedVersion, requestId: uuid() }),
+        );
+        valid(request);
+        try {
+          storage.setItem(KEY, JSON.stringify(request));
+        } catch (_) {
+          blocked = true;
+          notify();
+          throw fail("STORAGE_UNAVAILABLE");
+        }
+        pending = request;
+        return retry();
+      }
+      return { status, start, retry, sync };
+    }
+    return { create, KEY };
+  })();
+</script>

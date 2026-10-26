@@ -11,6 +11,9 @@ function publicError_(error) {
   const messages = {
     INVALID_ARGUMENT: "えらびなおしてね",
     BUSY: "ちょっとまって、もういちど",
+    VERSION_CONFLICT: "きろくがかわったよ。よみなおそう",
+    REQUEST_ID_CONFLICT: "つうしんをかくにんしてね",
+    OP_LIMIT: "きょうのデモはここまで。大人をよんでね",
     ASSET_UNAVAILABLE: "えのよみこみにしっぱいしたよ",
     DATA_INTEGRITY_ERROR: "きろくをかくにんしています。大人をよんでね",
     INTERNAL_ERROR: "つうしんをかくにんして、もういちど",

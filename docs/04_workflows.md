@@ -20,8 +20,8 @@ Chromiumが既に導入済みならブラウザのインストールは不要。
 
 | コマンド | 実行内容 |
 |---|---|
-| npm test | Nodeの26テスト。GASモック・API・画面通信・構造 |
-| npm run build | srcの19実行ファイルと.claspignoreをdistへ出力。転送・デプロイしない |
+| npm test | Nodeの40テスト。GASモック・API・画面通信・構造 |
+| npm run build | srcの24実行ファイルと.claspignoreをdistへ出力。転送・デプロイしない |
 | npm run test:browser | build後にChromiumで360px幅・読込・通信失敗・キーボード再試行を確認 |
 | npm run check | format:check → test → build → test:browser |
 | npm run preview | 127.0.0.1:4173で仮データの最小画面を表示。Ctrl+Cで終了 |
@@ -128,3 +128,11 @@ Makefileは上記npmコマンドのラッパーへ更新した。Windowsではnp
 5. 未完了作業はバックログに残し、仕様・データ・API・運用の変更は連動文書も同時に更新する。デモ前後のコピー、復元・リセットは[リリース手順](08_release_runbook.md)に従う。
 
 画像モデル・料金・Googleサービスの公開設定とクォータは実装時に公式資料を確認する。元文書の参照日を今回の実測日と扱わない。
+
+### ③で追加したローカル変換と管理コマンド
+
+生成元をローカルへ保存した後、`node scripts/convert-webp.mjs source.png output.webp` を実行する。PNG/JPEG/WebPをChromiumで読み、縦横比を保って長辺512px以下に縮小し、100KiB以下のWebPへ変換・再デコードする。既存出力は上書きしない。元ファイルは16MiB以下、画像は32メガピクセル以下。これは形式変換であり内容確認・Drive登録・READY化は行わない。提供者が画像を確認した後、②のregister手順で登録する。
+
+`npm run build` 後の `node scripts/operator.mjs backup` は検証済みバックアップ、`restore BACKUP_ID` は別コピーへの復元検証、`verify` は試験用コピーだけに決定的な1行を追記して再送・バックアップ・復元を確認するエディタ専用ビルドを作る。verifyはコピー3冊を作り、元の接続先やActionsを変えない。200件に達した元データでは追加試験できない。
+
+実行は従来どおりartifacts/operatorからclasp push、エディタのoperatorRunを1回実行する。終了後はエディタでserver/operator-run.gsを削除して通常distをpushし、存在しないことを確認する。管理ビルドからデプロイ・版作成をしない。生成HTTP 429の再試行や課金設定変更をこれらの操作に含めない。

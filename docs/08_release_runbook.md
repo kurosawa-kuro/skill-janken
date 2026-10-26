@@ -6,7 +6,7 @@
 
 ## 対象と実施前提
 
-提供者の管理端末・本人限定公開・P001の1プレイヤー・行動200件までの短期デモを対象とする。以下は完成時の運用手順。②の本人限定試験配置v1・Sheets初期化は実施済み。Gemini画像生成・リセット・復旧・MVP完成は未確認。
+提供者の管理端末・本人限定公開・P001の1プレイヤー・行動200件までの短期デモを対象とする。以下は完成時の運用手順。②のSheets初期化、③の試験用コピーへの保存・再送・バックアップ復元照合は実施済み。本人限定試験配置はv2へ更新した。Gemini画像生成・本番復旧切替・リセット・MVP完成は未確認。
 
 ## リリース前の確認
 
@@ -27,7 +27,7 @@
 3. PowerShellで `Push-Location artifacts/operator`、`..\..\node_modules\.bin\clasp.cmd push --force`、`Pop-Location` を順に実行する。clasp 3.4.1では相対 `-P` のルート検証で失敗する場合があるため、そのディレクトリで実行する。
 4. GASエディタを再読込し、server/operator-run.gsの `operatorRun` を1回実行する。初回はGoogle側の権限を確認して認可する。ログは成功概要だけとし、キー・応答本文は出さない。
 5. 実行完了後、**エディタでserver/operator-run.gsを削除**し、ルートから `npx clasp push --force` を実行する。再読込し、一時ファイルがないことを確認する。
-6. 一時ファイルがある間はバージョン作成・デプロイをしない。必要時は通常19ファイルに復帰した後で `npx clasp create-deployment --description '確認内容'` を実行する。既存配置の更新にはそのdeploymentIdを指定し、公開範囲を再確認する。
+6. 一時ファイルがある間はバージョン作成・デプロイをしない。必要時は通常24ファイルに復帰した後で `npx clasp create-deployment --description '確認内容'` を実行する。既存配置の更新にはそのdeploymentIdを指定し、公開範囲を再確認する。
 
 clasp 3.4.1の `--force` はmanifestの上書き指定であり、**リモート側だけに残ったファイルの削除を検出しない**。今回、単純なpushは「already up to date」となった。その後、通常ソースの変更を含む19ファイルをpushし、エディタから一時ファイルが消えたことを確認してからv1を配置した。復帰確認を省略しない。
 
@@ -36,6 +36,8 @@ clasp 3.4.1の `--force` はmanifestの上書き指定であり、**リモート
 ### 現在の試験配置（2026-10-26）
 
 専用の接続先・Web版v1・観測結果は[②の実測記録](tasks/03_active/foundation-02-integration.md)に記載。manifestは `access: MYSELF`、`executeAs: USER_DEPLOYING`。Sheetsと画像フォルダーは所有者1名・shared=falseを確認した。GASから初期状態を読み、本人ブラウザで表示・再読込できた。テスト用WebPの配信も確認済み。Geminiのモデル一覧取得は成功したが、画像生成はHTTP 429で課金・割当確認待ち。別アカウント拒否・ゲーム操作は未確認であり、リリース完了ではない。
+
+③では検証用関数を撤去した後、clasp pullによる24ファイルの通常distとの一致を確認し、同じdeploymentIdをv2へ更新した。初期表示・再読込は実ブラウザで成功。保存・再送・復元の実測と未確認範囲は[③の記録](tasks/03_active/foundation-03-hardening.md)を参照する。
 
 ### 初版の配置
 
@@ -118,3 +120,11 @@ Apps Scriptや関連サービスには実行時間・呼出し数等の割当が
 ### Gemini疎通時の切り分け
 
 モデル未設定はrequiredProperty_、外部通信未認可はscript.external_requestで停止する。キーとモデルを設定し、必要な認可後にinspectを実行する。モデル一覧HTTP 200・available=trueでも画像生成の課金・割当を満たすとは限らない。生成HTTP 429では連続実行せず、提供者が課金・割当を確認する。診断ログはHTTPコードと許可したモデル名だけとし、キー・生の応答本文は出さない。
+
+### ③のバックアップ・復元検証コマンド
+
+正常データは `backupLab_()` でロック内に全表検証→Sheetsの `Spreadsheet.copy(name)` →非公開所有確認→全表再検証→SHA-256一致確認を行う。[公式のcopyと必要権限](https://developers.google.com/apps-script/reference/spreadsheet/spreadsheet#copyname)を2026-10-26確認。Drive全体の書込権限を追加する必要はない。書式を含むブックコピーだが、検証対象の正本は8表の値と型。画像はファイルID参照のままで、Drive画像本体・GASコード・Script Propertiesはこのバックアップに含めない。
+
+`restoreBackupToCopy_(backupId)` はバックアップから新しい検証用ブックを作り、現用ブックを上書きせず、JANKEN_SPREADSHEET_IDも変更しない。現用IDを直接指定すると拒否する。作成方法はdocs/04のoperator backup/restore/verifyを参照。検証失敗時の途中コピーは証跡として残り、成功扱いにしない。
+
+元データが破損している場合、この正常データ用コマンドはコピー前に停止する。先に提供者がGoogle Sheets画面から現状の証跡コピーを保存し、既知の正常バックアップを別ブックへ復元する。利用再開にはデモ停止中に復元先の版・ポイント・所有・習得を照合し、提供者が接続先を切り替えて保留要求を整理する。本番切替・リセット・破損行の自動修復は③では実装しない。

@@ -31,7 +31,7 @@
 
 内部例外やGoogleのエラー本文、APIキー、DriveのファイルIDは子ども向け画面に表示しない。
 
-①土台作成ではINVALID_ARGUMENT・ASSET_UNAVAILABLE・DATA_INTEGRITY_ERROR・INTERNAL_ERRORの共通応答と、クライアント側の業務／通信失敗の区別を実装した。設定不足・未実装処理はINTERNAL_ERROR（retryable=false）等で停止し、仮データの成功に置き換えない。②では実読取・非公開画像・生成アダプターとBUSYを追加した。設定不足は設定後に手動再試行する。Actionsが存在するデータは現段階ではDATA_INTEGRITY_ERRORとし、初期状態へ戻さない。その他のゲーム固有エラー・変更要求の保留と再送は後続実装。
+①土台作成ではINVALID_ARGUMENT・ASSET_UNAVAILABLE・DATA_INTEGRITY_ERROR・INTERNAL_ERRORの共通応答と、クライアント側の業務／通信失敗の区別を実装した。設定不足・未実装処理はINTERNAL_ERROR（retryable=false）等で停止し、仮データの成功に置き換えない。②では実読取・非公開画像・生成アダプターとBUSYを追加した。設定不足は設定後に手動再試行する。③でActionsの追記・再送とVERSION_CONFLICT・REQUEST_ID_CONFLICT・OP_LIMITを追加した。壊れたActionsではDATA_INTEGRITY_ERRORで停止する。ゲーム操作の業務判定は後続。
 
 不明な例外は定型のINTERNAL_ERRORへ変換する。元の例外本文・スタックをレスポンスやアプリログへ出さない。クライアント側のNETWORK_ERRORは通信失敗を識別するローカルコードであり、新しいサーバー業務コードではない。
 
@@ -64,3 +64,9 @@
 ## 関連タスクと回帰確認
 
 エラー変更時は再現条件と期待する状態をタスクへ記録し、[AC06・AC08〜AC13・AC17・AC20〜AC23](07_test_strategy.md)を確認する。復旧で得た恒久手順はタスクだけに残さず、データモデルまたはリリース手順へ反映する。
+
+### 保留要求の解決（③実装）
+
+送信前のsessionStorage保存に失敗したら送信しない。読込時に破損・容量超過・保存領域アクセス失敗があれば要求を消さず変更を停止する。通信失敗、BUSY、INTERNAL_ERROR、DATA_INTEGRITY_ERROR、REQUEST_ID_CONFLICT、応答IDや版の不一致は保留を維持する。自動再送はしない。
+
+成功応答のID・版・状態を照合して保留を削除し、bootstrapで最新化する。削除失敗は変更停止。成功後のbootstrap失敗では再送せず読取りを再試行する。VERSION_CONFLICT、OP_LIMIT、入力や業務条件の確定的な拒否は保留を解除して最新化する。新規操作は同期成功後のみ許可する。

@@ -2,6 +2,18 @@
   (() => {
     const { $, el } = App.dom;
     let busy = false;
+    App.commands = App.pending.create({
+      changed: (status) => {
+        document.querySelectorAll("[data-mutation]").forEach((button) => {
+          button.disabled =
+            status.busy ||
+            status.blocked ||
+            !!status.pending ||
+            status.needsSync;
+        });
+        $("resend").disabled = status.busy || status.blocked;
+      },
+    });
     async function showCompanion(character) {
       const container = $("companion");
       container.replaceChildren();
@@ -10,18 +22,7 @@
       const fallback = el("p", "record", character.name);
       container.append(fallback);
       try {
-        const { data } = await App.api.call({
-          op: "getAsset",
-          payload: { assetId: character.assetId },
-        });
-        if (
-          data.assetId !== character.assetId ||
-          data.mimeType !== "image/webp" ||
-          typeof data.base64 !== "string" ||
-          data.base64.length > 136536 ||
-          !/^[A-Za-z0-9+/]+={0,2}$/.test(data.base64)
-        )
-          return;
+        const url = await App.assets.get(character.assetId);
         const img = document.createElement("img");
         img.alt = character.name;
         img.className = "companion-image";
@@ -31,17 +32,27 @@
           fallback.hidden = true;
         };
         img.onerror = () => {
+          App.assets.invalidate(character.assetId);
           img.remove();
           fallback.hidden = false;
         };
         container.append(img);
-        img.src = `data:image/webp;base64,${data.base64}`;
+        img.src = url;
       } catch (_) {
         // The name stays visible; image availability never hides the record.
       }
     }
-    async function load() {
+    async function load(resume = false) {
       if (busy) return;
+      const pending = App.commands.status();
+      if (pending.blocked || (pending.pending && !resume)) {
+        $("status").textContent = pending.blocked
+          ? "きろくをかくにんしています。大人をよんでね"
+          : "とどいたか、つづきのきろくをかくにんしよう";
+        $("resend").hidden = pending.blocked;
+        $("panel").setAttribute("aria-busy", "false");
+        return;
+      }
       busy = true;
       $("panel").setAttribute("aria-busy", "true");
       $("status").textContent = "きろくをよんでいるよ…";
@@ -50,9 +61,12 @@
       $("companion").hidden = true;
       $("companion").replaceChildren();
       $("retry").hidden = true;
+      $("resend").hidden = true;
       $("retry").disabled = true;
       try {
-        const response = await App.api.bootstrap();
+        const response = resume
+          ? (await App.commands.retry()).latest
+          : await App.commands.sync();
         const { player, state } = response.data;
         if (
           !player ||
@@ -79,14 +93,17 @@
           error.kind === "business" && error.code === "DATA_INTEGRITY_ERROR"
             ? "きろくをかくにんしています。大人をよんでね"
             : "きろくをよめなかったよ。大人といっしょに、もういちどためしてね。";
-        $("retry").hidden = false;
+        const pending = App.commands.status();
+        $("resend").hidden = !pending.pending || pending.blocked;
+        $("retry").hidden = !!pending.pending || pending.blocked;
       } finally {
         busy = false;
         $("retry").disabled = false;
         $("panel").setAttribute("aria-busy", "false");
       }
     }
-    $("retry").addEventListener("click", load);
+    $("retry").addEventListener("click", () => load());
+    $("resend").addEventListener("click", () => load(true));
     load();
   })();
 </script>

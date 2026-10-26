@@ -13,6 +13,8 @@ function include_(name) {
     "client/styles",
     "client/core/dom",
     "client/core/api",
+    "client/core/pending",
+    "client/core/assets",
     "client/app",
   ];
   if (!allowed.includes(name)) throw new Error("Unknown template");

@@ -1,7 +1,8 @@
 // Adapted from photo-diary/SheetStore: typed values and exact headers.
 // Unlike the original, partially populated rows with an empty key are NOT hidden.
-function readTables_() {
-  const book = SpreadsheetApp.openById(repositorySettings_().spreadsheetId);
+function readTables_(
+  book = SpreadsheetApp.openById(repositorySettings_().spreadsheetId),
+) {
   const definitions = tableDefinitions_();
   const tables = {};
   for (const name of Object.keys(definitions)) {
@@ -22,11 +23,8 @@ function readTables_() {
   return tables;
 }
 
-function initialSnapshot_() {
-  const tables = readTables_();
-  // Phase 2 is read-only and supports only the verified initial dataset.
-  // Phase 3 replaces this guard with full Actions validation and state recovery.
-  if (tables.Actions.length !== 0) throw new AppError_("DATA_INTEGRITY_ERROR");
+function readSnapshot_(book, validateTransition = validateStoredTransition_) {
+  const tables = readTables_(book);
   const expected = initialTables_();
   for (const name of [
     "Characters",
@@ -47,17 +45,18 @@ function initialSnapshot_() {
     tables.Players.length !== 1 ||
     player.playerId !== "P001" ||
     player.displayName !== "たんけんたい" ||
-    typeof player.createdAt !== "string" ||
-    !Number.isFinite(Date.parse(player.createdAt))
+    !isUtcDate_(player.createdAt)
   )
     throw new AppError_("DATA_INTEGRITY_ERROR");
   let state;
   try {
-    state = JSON.parse(player.initialStateJson);
+    state = parseCell_(player.initialStateJson);
   } catch (_) {
     throw new AppError_("DATA_INTEGRITY_ERROR");
   }
-  if (JSON.stringify(state) !== expected.Players[0][2])
+  if (
+    canonicalJson_(state) !== canonicalJson_(JSON.parse(expected.Players[0][2]))
+  )
     throw new AppError_("DATA_INTEGRITY_ERROR");
   const assetIds = expected.Assets.map((row) => row[0]);
   if (
@@ -70,16 +69,44 @@ function initialSnapshot_() {
         !Number.isSafeInteger(row.version) ||
         row.version < 0 ||
         !Number.isSafeInteger(row.byteSize) ||
-        row.byteSize < 0,
+        row.byteSize < 0 ||
+        row.byteSize > 102400 ||
+        [
+          "sourceFileId",
+          "webpFileId",
+          "mimeType",
+          "promptVersion",
+          "modelId",
+          "generatedAt",
+        ].some((key) => typeof row[key] !== "string") ||
+        (row.sourceFileId !== "" &&
+          (!row.modelId ||
+            !row.promptVersion ||
+            !isUtcDate_(row.generatedAt))) ||
+        (row.status === "READY" &&
+          (!row.webpFileId ||
+            row.mimeType !== "image/webp" ||
+            row.byteSize < 1 ||
+            row.version < 1)),
     )
   )
     throw new AppError_("DATA_INTEGRITY_ERROR");
+  if (
+    tables.Assets.filter((row) => row.status === "READY").reduce(
+      (sum, row) => sum + row.byteSize,
+      0,
+    ) > 716800
+  )
+    throw new AppError_("DATA_INTEGRITY_ERROR");
+  const journal = validateActions_(tables, state, validateTransition);
+  state = journal.state;
   const pick = (rows, columns) =>
     rows.map((row) =>
       Object.fromEntries(columns.map((column) => [column, row[column]])),
     );
   return {
     tables,
+    actions: journal.actions,
     data: {
       player: { playerId: player.playerId, displayName: player.displayName },
       state,
@@ -100,7 +127,10 @@ function initialSnapshot_() {
         "cost",
       ]),
       masterVersion: 1,
-      limits: { maxActions: 200, remainingActions: 200 },
+      limits: {
+        maxActions: 200,
+        remainingActions: 200 - journal.actions.length,
+      },
     },
   };
 }
