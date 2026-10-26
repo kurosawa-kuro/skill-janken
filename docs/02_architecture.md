@@ -8,32 +8,35 @@
 
 | 技術 | 初版での役割 |
 |---|---|
-| Google Apps Script（GAS） | 画面配信、入力検証、勝敗・ポイント計算、保存、画像取得 |
+| Google Apps Script（GAS） | 画面配信、入力検証、勝敗・ポイント計算、保存、対戦後のセリフ取得 |
 | Google Sheets | キャラ・スキル・対応表・レシピ・行動記録の保存と教材用の可視化 |
-| Google Drive | 生成元画像・採用WebP画像・バックアップの保管。一般公開しない |
-| Gemini | 提供者がキャラとスキルの絵を事前生成する。対戦ロジックには使わない |
+| Google Drive | Sheetsの非公開確認とバックアップ。画像用途は廃止 |
+| Gemini | 保存済み対戦の短いセリフ。画像生成・勝敗の決定には使わない |
 | HTML/CSS/JavaScript | 縦画面、カード、ボタン、短い演出、学習表示 |
 
-モデル名や料金は変更されるため、実装時に利用可能な画像生成対応モデルを確認する。画像生成とWebP変換は別工程とし、Geminiが必ずWebPを直接返すとは想定しない。公式資料の出典と確認範囲は[文書索引](00_index.md)に記載する。
+テキスト用モデルの無料枠・利用可能性を実装時に確認する。画像生成とWebP制作・配信は廃止。公式資料の出典と確認範囲は[文書索引](00_index.md)に記載する。
 
 ## 全体構成
 
 ```mermaid
 flowchart LR
-    B[スマホブラウザ HTML Service] -->|google.script.run| G[GAS api]
-    G --> S[Sheets マスターと行動記録]
-    G --> D[Drive 採用WebP]
-    A[提供者の制作操作] --> M[Gemini 画像生成]
-    M --> O[Drive 元画像]
-    O --> W[提供者がWebP変換・内容確認]
-    W --> D
+    B[画像なしのカード画面] -->|google.script.run| G[GAS api]
+    G -->|対戦を先に保存| S[Sheets マスターとActions]
+    G -->|結果表示後 getBattleLine| T[AIセリフサービス]
+    T -->|保存済みROUNDを参照| S
+    T -->|ゲーム保存ロックの外| M[Gemini テキスト]
+    T --> P[予約・回数・セリフ管理]
+    M -->|テキスト応答| T
+    T -->|検証済み短文 または定型文| B
 ```
 
 画面はGASの `doGet()` が返すHTML Service。画面からサーバーへの通信は非同期の `google.script.run` を使う。[Webアプリの公式説明](https://developers.google.com/apps-script/guides/web)、[HTML Serviceの通信](https://developers.google.com/apps-script/guides/html/communication)。
 
-初版は同じGAS内の画面とサーバーを使い、独立したRESTサーバーや別ホスティングを用意しない。画像生成は制作時の処理であり、ゲームの変更処理に含めない。
+初版は同じGAS内の画面とサーバーを使い、独立したRESTサーバーや別ホスティングを用意しない。画像生成は廃止。AIセリフはゲーム変更の保存完了後に別RPCで取得する。
 
 ## 実装ファイルの責務
+
+下表は現行Web v2の実装棚卸し。画像関連の行は継続採用の意味ではなく撤去対象である。新設計のサービス境界と入力・回数管理は[AIセリフ設計](specs/ai-battle-dialogue.md)、ファイル単位の変更は[実装タスク](tasks/02_backlog/ai-battle-dialogue.md)を参照する。
 
 | 実ファイル／後続の責務 | 責務 |
 |---|---|
@@ -69,7 +72,7 @@ flowchart LR
 | 6 | 学習表示 | Client / Repository、getRelations | Players→Actions、Characters↔CharacterSkills↔Skills | 実データに一致しなければ学習要件未達 |
 | 7 | 再開 | Client / Repository、保留要求解決→bootstrap | sessionStorageとSheets最新状態 | 過去の再送結果で画面を巻き戻さない |
 
-画像取得はAssets / Driveを通る `getAsset`。画像失敗時は名前付き代替表示で続行する。Geminiは制作時だけ利用し、対戦・合成の実行経路には含めない。GAS・Sheets・認証が中核経路の依存先となる。
+画像配信getAssetは撤去対象。新仕様は画像ファイルを必要とせず、GAS・Sheets・認証がゲームの中核依存となる。テキストAIは演出に使い、生成失敗が保存や次の操作を妨げない。
 
 ## 通信操作と状態変更
 
@@ -82,7 +85,7 @@ flowchart LR
 | playRound | 1回のじゃんけん | ポイント加算 |
 | synthesize | 固定レシピで習得 | ポイント消費・習得追加 |
 | getRelations | 学習用の関係と最新記録取得 | なし |
-| getAsset | 採用画像1枚の取得 | なし |
+| getBattleLine | 保存済み対戦に対するセリフ | ゲーム状態なし。生成予約・日次回数・セリフ保存のみ |
 
 変更要求には一意の `requestId` と画面が読んだ `expectedVersion` を付ける。同じ要求を再送すると保存済みの結果を返し、二重に適用しない。別の操作で状態が進んでいたら更新競合として再読込を案内する。
 
@@ -152,7 +155,7 @@ flowchart LR
 }
 ```
 
-業務エラーも成功ハンドラーにこの形式で返す。GASやネットワークの例外は失敗ハンドラーで扱い、変更結果は未確定とする。読み取り応答はrequestId=null、replayed=false。versionは状態を含む読み取りと変更成功で返し、画像応答では省略する。
+業務エラーも成功ハンドラーにこの形式で返す。GASやネットワークの例外は失敗ハンドラーで扱い、変更結果は未確定とする。読み取り応答はrequestId=null、replayed=false。versionは状態を含む読み取りと変更成功で返し、セリフ応答では省略する。
 
 ### 操作別契約
 
@@ -163,11 +166,11 @@ flowchart LR
 | playRound | `{characterId, skillId, hand}` | `{result:{characterId, skillId, playerHand, cpuHand, outcome, basePoints, bonusPoints, earnedPoints}, state}` | 所有、習得、適性、手の許可値 |
 | synthesize | `{ingredientSkillIds:["S01","S02"]}` | `{result:{recipeId, unlockedSkillId, spentPoints}, state}` | 配列長2、重複なし、固定レシピ、習得、未解放、残高 |
 | getRelations | `{}` | `{player, recentActions, characters, skills, characterSkills, ownedCharacterIds, unlockedSkillIds}` | 最新10件のみ。トークンや内部パスを除く |
-| getAsset | `{assetId:"A_C01"}` | `{assetId, version, mimeType, base64}` | マスターから参照するREADY画像のみ |
+| getBattleLine | `{roundRequestId:"UUID"}` | `{roundRequestId,text,source:"ai"\|"preset"}` | P001の保存済みROUNDのみ。生成済み・予約済みは再生成しない |
 
 bootstrapのplayerは `{playerId, displayName}`。charactersは `{characterId,name,assetId}`、skillsは `{skillId,name,effectCode,bonus,assetId}`、characterSkillsは `{characterId,skillId}`、recipesは `{recipeId,ingredientA,ingredientB,resultSkillId,cost}` の配列。limitsは `{maxActions:200,remainingActions:n}`。
 
-recentActionsは `{actionId,type,createdAt,result}` の配列で新しい順。payloadHashや入力の内部記録は返さない。getRelationsのversionは対応する状態のversion。画像ファイルが変わる場合はAssets.versionを増やす。
+recentActionsは `{actionId,type,createdAt,result}` の配列で新しい順。payloadHashや入力の内部記録は返さない。getRelationsのversionは対応する状態のversion。Assetsは既存データ互換用に残すレガシー表となり、ゲームは参照しない。
 
 playerIdはクライアントから受け取らず、初版サーバー内でP001と決める。未知のop、未知のキー、必要項目不足を拒否する。変更要求全体は4KB以下、IDは英数字・`_`・`-`の32文字以内、requestIdはUUID形式に限定する。
 
@@ -186,13 +189,13 @@ playerIdはクライアントから受け取らず、初版サーバー内でP00
 
 | 拡張 | 追加・変更が必要なこと | 初版との境界 |
 |---|---|---|
-| キャラ・固定スキル追加 | マスター、画像、適性、受入条件の更新 | 効果コードが既存ならロジック追加は不要 |
+| キャラ・固定スキル追加 | マスター、図形カード、定型セリフ、適性、受入条件の更新 | 効果コードが既存ならロジック追加は不要 |
 | 新しい効果 | Rulesの許可コード・表示・試験を追加 | AIが任意コードや効果値を決めない |
 | 3素材以上の合成 | RecipeIngredientsと数量、在庫消費を設計 | 初版の2素材・非消費とは別仕様 |
 | 個別プレイヤー | 認証、主体からのID解決、所有権検証、記録分離 | 固定P001を置き換える |
 | 教室での同時利用 | 負荷測定、運用管理、保存先選定 | ScriptLockの全体直列化がボトルネックになる |
 | DBへの移行 | PlayerCharacters、PlayerSkills、対戦表、取引・一意制約 | JSONスナップショットを正規化した現在状態へ移す |
-| 遊び中の画像生成 | 非同期ジョブ、上限、確認、再試行、待機画像 | 合成成功と画像完成を別状態で管理 |
+| 対戦以外のAI会話 | 別途の目的・入力・回数・内容確認の設計が必要 | 初版は対戦後の一言のみ。画像生成は廃止 |
 | 一般公開 | 認証、監視、レート制限、年齢に応じた運用、問い合わせ・削除 | 公開設定の変更だけでは足りない |
 
 ## 開発ガイドとの関係

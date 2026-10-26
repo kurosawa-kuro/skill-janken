@@ -11,8 +11,8 @@
 ## リリース前の確認
 
 - [MVP実装計画](tasks/02_backlog/mvp-implementation.md)と[タスク一覧](tasks/README.md)から未完了事項を確認し、公開前の必須条件と後続作業を区別する。
-- [AC01〜AC23](07_test_strategy.md)の結果・端末・日時・証拠を記録する。検証用の本人限定配置を使って試験し、未実施の項目を残したままデモ完成と判定しない。
-- マスター参照、CharacterSkills 9行、R01 1行、初期状態、採用WebP7枚、公開範囲を確認する。デモ前とマスター変更前にSheetsを日時付きでコピーする。
+- [AC01〜AC26](07_test_strategy.md)の結果・端末・日時・証拠を記録する。検証用の本人限定配置を使って試験し、未実施の項目を残したままデモ完成と判定しない。
+- マスター参照、CharacterSkills 9行、R01 1行、初期状態、画像なしカード7種類、AI無効時の継続、公開範囲を確認する。デモ前とマスター変更前にSheetsを日時付きでコピーする。
 - Script Properties、GAS・Sheets・Driveの編集権限、画像の版を確認する。キーを子ども向け画面やログへ出さない。
 - 実装版、設定・マスター版、バックアップの参照、テスト結果を提供者用の記録に残す。子どもの個人情報や認証情報を含めない。
 
@@ -23,7 +23,7 @@
 内部関数は末尾 `_` のため、GASエディタの実行候補にも表示されない。管理者だけが利用する一時ラッパーを用意し、実行後に除去する。通常ソース・バージョン・Web配置に管理用の公開関数を残さない。[Google公式の説明](https://googleappsscript.blogspot.com/2010/06/hiding-helper-functions.html)。
 
 1. ルートで `npm run check`。`.clasp.json` のscriptIdが今回の専用GAS、rootDirがdistであることを確認する。
-2. `node scripts/operator.mjs setup` で初期化用ファイルをGit対象外のartifacts/operatorへ準備する。モデル一覧の診断は `inspect`、画像1枚の生成は `generate`、採用登録は `register A_C01 FILE_ID` を指定する。キーは引数にしない。
+2. `node scripts/operator.mjs setup` は初期化用。backup/restore/verifyは保存検証用。旧generate/inspect（画像用）/registerは廃止対象として今後実行しない。画像設定への依存除去は新タスクで実装する。テキスト疎通手順はgetBattleLineの実装時に追記する。
 3. PowerShellで `Push-Location artifacts/operator`、`..\..\node_modules\.bin\clasp.cmd push --force`、`Pop-Location` を順に実行する。clasp 3.4.1では相対 `-P` のルート検証で失敗する場合があるため、そのディレクトリで実行する。
 4. GASエディタを再読込し、server/operator-run.gsの `operatorRun` を1回実行する。初回はGoogle側の権限を確認して認可する。ログは成功概要だけとし、キー・応答本文は出さない。
 5. 実行完了後、**エディタでserver/operator-run.gsを削除**し、ルートから `npx clasp push --force` を実行する。再読込し、一時ファイルがないことを確認する。
@@ -35,7 +35,7 @@ clasp 3.4.1の `--force` はmanifestの上書き指定であり、**リモート
 
 ### 現在の試験配置（2026-10-26）
 
-専用の接続先・Web版v1・観測結果は[②の実測記録](tasks/03_active/foundation-02-integration.md)に記載。manifestは `access: MYSELF`、`executeAs: USER_DEPLOYING`。Sheetsと画像フォルダーは所有者1名・shared=falseを確認した。GASから初期状態を読み、本人ブラウザで表示・再読込できた。テスト用WebPの配信も確認済み。Geminiのモデル一覧取得は成功したが、画像生成はHTTP 429で課金・割当確認待ち。別アカウント拒否・ゲーム操作は未確認であり、リリース完了ではない。
+専用の接続先・Web版v1・観測結果は[②の実測記録](tasks/03_active/foundation-02-integration.md)に記載。manifestは `access: MYSELF`、`executeAs: USER_DEPLOYING`。Sheetsと画像フォルダーは所有者1名・shared=falseを確認した。GASから初期状態を読み、本人ブラウザで表示・再読込できた。テスト用WebPの配信も確認済み。Geminiのモデル一覧取得は成功したが、旧画像生成はHTTP 429。その後の再設計で画像生成を廃止し、課金・割当の解消待ちは取り消した。別アカウント拒否・ゲーム操作は未確認であり、リリース完了ではない。
 
 ③では検証用関数を撤去した後、clasp pullによる24ファイルの通常distとの一致を確認し、同じdeploymentIdをv2へ更新した。初期表示・再読込は実ブラウザで成功。保存・再送・復元の実測と未確認範囲は[③の記録](tasks/03_active/foundation-03-hardening.md)を参照する。
 
@@ -75,18 +75,18 @@ clasp 3.4.1の `--force` はmanifestの上書き指定であり、**リモート
 | 6 | 「つながり」を開き、キャラとスキルを選択する | 最新10件と9本の適性が実データに一致。S04の線は変わらず鍵だけ外れる |
 | 7 | ページ再読込・ブラウザを閉じて再開する | 最新のversion・ポイント・所有・習得が保存状態と一致 |
 
-別アカウントと未ログインからのアクセス拒否も確認する。画像7枚と画像失敗時の継続はAC16・AC17、復元はAC23で確認する。個別の関数が動くことだけをもってリリース完了としない。
+別アカウントと未ログインからのアクセス拒否も確認する。画像なしのカードは改訂AC16、AI停止時継続は改訂AC17、実生成・表示順・回数管理はAC24〜AC26、復元はAC23で確認する。個別関数の成功だけでリリース完了としない。
 
 ## デモ運用・障害対応
 
 | 場面 | 提供者の手順 |
 |---|---|
-| デモ開始前 | マスター参照・画像7枚・初期データ・公開範囲を確認 |
-| 日々の確認 | Apps Scriptの実行失敗、Actions件数、Gemini制作時の利用量を確認 |
+| デモ開始前 | マスター・画像なしカード・初期データ・公開範囲・AI有効化の設定を確認 |
+| 日々の確認 | Apps Scriptの実行失敗、Actions件数、AIセリフの日次回数・停止状態を確認 |
 | 保存前後 | デモ前とデモ終了時にSheetsを日時付きでコピー。マスター変更前にも保存 |
 | 通信失敗 | 同じ要求の再送で確認。記録を見ずにポイントを手修正しない |
 | 不完全行 | 利用停止→Sheetsコピー→requestIdと直前状態を照合→テスト用コピーで修復検証 |
-| 画像失敗 | 代替表示で続行し、AssetsとDrive権限を確認 |
+| AIセリフだけ失敗 | 定型文で続行。提供者がテキストモデル・割当・停止状態を確認し、自動再試行しない |
 | 200件到達 | Sheetsをコピーしてデモ記録を保管し、管理関数でP001のActionsだけを初期化 |
 | リセット時 | 端末の保留要求を消し、タブを閉じて開き直す。古いタブからの送信を防ぐ |
 | 復元 | バックアップコピーでマスター版と全行を検証し、テスト用GASから先に確認 |
@@ -117,10 +117,11 @@ Apps Scriptや関連サービスには実行時間・呼出し数等の割当が
 
 未解決事項・実施できなかった検証・復旧中の判断を[タスク一覧](tasks/README.md)から追跡する。恒久手順は本書等へ反映する。一般公開、個別プレイヤー、学校全体の同時利用は別設計であり、本人限定のapiを公開設定の変更だけで匿名公開しない。
 
-### Gemini疎通時の切り分け
+### テキストAIの疎通と停止
 
-モデル未設定はrequiredProperty_、外部通信未認可はscript.external_requestで停止する。キーとモデルを設定し、必要な認可後にinspectを実行する。モデル一覧HTTP 200・available=trueでも画像生成の課金・割当を満たすとは限らない。生成HTTP 429では連続実行せず、提供者が課金・割当を確認する。診断ログはHTTPコードと許可したモデル名だけとし、キー・生の応答本文は出さない。
+新設計ではGEMINI_TEXT_MODELと有効化設定を使う。画像モデルの429を解消するための課金・再試行は行わない。画像用キー設定が残っていても画像APIを呼ばない実装へ移行する。
 
+テキストAIの設定なし・無効は定型文で稼働。429や認証・モデル利用不可では当日停止し、ゲーム操作を継続する。提供者が必要に応じて利用可否を確認する。HTTP成功やモデル一覧だけで実生成成功とせず、保存済み対戦を参照した短文を確認する。設定・回数の詳細は[AIセリフ設計](specs/ai-battle-dialogue.md)。
 ### ③のバックアップ・復元検証コマンド
 
 正常データは `backupLab_()` でロック内に全表検証→Sheetsの `Spreadsheet.copy(name)` →非公開所有確認→全表再検証→SHA-256一致確認を行う。[公式のcopyと必要権限](https://developers.google.com/apps-script/reference/spreadsheet/spreadsheet#copyname)を2026-10-26確認。Drive全体の書込権限を追加する必要はない。書式を含むブックコピーだが、検証対象の正本は8表の値と型。画像はファイルID参照のままで、Drive画像本体・GASコード・Script Propertiesはこのバックアップに含めない。

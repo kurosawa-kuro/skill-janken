@@ -8,9 +8,9 @@
 
 | 種別 | 保存先・扱い |
 |---|---|
-| APIキー・画像モデルID・Spreadsheet ID・DriveフォルダーID | GASのScript Properties。編集者は提供者に限定。キーをHTML・Sheets・ブラウザ保存領域・ログへ出さない |
+| APIキー・テキストモデルID・AI有効化設定・Spreadsheet ID | GASのScript Properties。編集者は提供者に限定。キーをHTML・Sheets・ブラウザ保存領域・ログへ出さない。画像モデル・画像フォルダーの参照は撤去対象 |
 | ゲーム全体の設定 | Settingsシート。MASTER_VERSION=1、MAX_ACTIONS=200、SCHEMA_VERSION=1 |
-| 元画像と採用画像の対応・版 | Assetsシート。Drive IDはサーバー内だけで扱う |
+| 旧画像データ | Assetsシートは過去データ互換用に保管。新ゲームでは未使用。Drive IDを画面へ出さない |
 | プレイヤーの現在状態 | 最新Actions行のstateJson。0件のときだけPlayers.initialStateJson |
 | 未解決の変更要求 | 端末のsessionStorageに要求全体を保持。現在状態の正本にしない |
 | 選択中の仲間・スキル | 端末内の表示状態。各対戦要求で送信し、サーバーで検証 |
@@ -41,6 +41,8 @@ Sheetsをデータベース同等の複数テーブル取引として扱わな�
 
 ### シート定義
 
+以下は既存データと互換性を保つ8表のスキーマ。AssetsとassetId列は旧画像機能の履歴として保管し、新仕様のゲーム機能には使用しない。既存行の削除や移行は今回行わない。
+
 | シート | 列（左から順） | キー・制約 |
 |---|---|---|
 | Players | playerId, displayName, initialStateJson, createdAt | PK playerId。初版P001のみ。初期JSONはversion 0 |
@@ -48,7 +50,7 @@ Sheetsをデータベース同等の複数テーブル取引として扱わな�
 | Skills | skillId, name, effectCode, bonus, assetId, active | PK skillId。effectCodeは4種の許可値、bonus=1 |
 | CharacterSkills | characterId, skillId | 複合PK (characterId, skillId)。双方にFK |
 | Recipes | recipeId, ingredientA, ingredientB, pairKey, resultSkillId, cost, active | PK recipeId。材料・結果→Skills。pairKey一意、cost=3 |
-| Assets | assetId, sourceFileId, webpFileId, mimeType, byteSize, version, status, promptVersion, modelId, generatedAt | PK assetId。statusはDRAFT/READY/REJECTED。READYはWebP必須 |
+| Assets | assetId, sourceFileId, webpFileId, mimeType, byteSize, version, status, promptVersion, modelId, generatedAt | 旧PK assetId。旧状態はDRAFT/READY/REJECTED。既存データの保管専用 |
 | Actions | actionId, playerId, seq, requestId, payloadHash, type, inputJson, resultJson, stateJson, createdAt, schemaVersion, masterVersion | PK actionId。FK playerId。playerId＋seq、playerId＋requestIdが一意 |
 | Settings | key, value | PK key。MASTER_VERSION=1、MAX_ACTIONS=200、SCHEMA_VERSION=1 |
 
@@ -148,10 +150,11 @@ payloadHashは `op + expectedVersion + 正規化payload` の安定したJSON表�
 
 自動再試行は初版では行わず、子ども向け再試行ボタンを用意する。勝敗計算テストでは乱数関数を引数注入できる構造にするが、公開APIには乱数固定機能を置かない。
 
-## 画像とキャッシュ
+## 廃止する画像データと新しいセリフ管理
 
-AssetsのREADY画像だけをマスター参照の許可IDで取得する。採用WebPは1枚512×512以下・100KiB以下、7枚合計700KiB以下。画像はJSONセルへ埋め込まない。画面内メモリはassetId＋versionで再利用し、画像変更時はAssets.versionを増やす。キャッシュは最新状態や重複判定の正本ではない。
+画像生成・登録・WebP配信・画像キャッシュは撤去する。Assets表とCharacters/Skills.assetIdはv1の既存記録・バックアップの互換性のため残し、新規ゲームの表示・保存・生成AIでは利用しない。現行コードはまだ参照しているため、撤去実装時にテストを更新する。8表の列順や既存Actionsを今回の設計だけで書き換えない。
 
+AIセリフはActionsのresultJson/stateJsonに混ぜず、Script Propertiesの専用接頭辞へ保存する。接続ブック＋ROUND.requestIdごとに予約済み／生成済み／定型文確定を保持し、外部呼出し前にロック内で予約・日次回数を確定する。外部通信中はゲーム保存ロックを持たない。ゲーム状態のversionは増やさない。保持上限・障害時の扱いは[AIセリフ設計](specs/ai-battle-dialogue.md)。
 ## スキーマ・マスター変更と復旧
 
 - 名前の変更でもIDは維持する。キャラ・スキル・レシピの追加は、参照、適性、確率表示、画像、受入条件を一緒に更新する。
@@ -164,10 +167,10 @@ AssetsのREADY画像だけをマスター参照の許可IDで取得する。採�
 
 [MVP実装計画](tasks/02_backlog/mvp-implementation.md)で初期データ・保存・再送の実装を追跡する。schema・設定・永続化方式の変更には目的、互換性、移行・復元、AC09〜AC13・AC21〜AC23への影響を記録する。
 
-### ③の正規化・容量・画像キャッシュの実装詳細
+### ③の正規化・容量の実装詳細
 
 inputJsonは `{op,expectedVersion,payload}`。合成材料をソートした後、オブジェクトキーを再帰的に辞書順へ整列したJSONをUTF-8でSHA-256化する。配列は材料の正規化以外は順序を保持し、requestIdはハッシュに含めない。UUIDの照合は大文字小文字を区別しない。要求はJSON.stringify後の4096バイト以下、各JSONセルは8192バイト以下で検証する（KB表記の実装値）。所有・習得ID配列は一意かつ整列済み。時刻はUTCのミリ秒付きISO文字列。
 
 全行のseq、actionId/requestId一意、schema/master版、入力ハッシュ、結果と次状態の差分を毎回検証する。書込前にも全体を検証し、setValues→flush→対象行照合→全体再読込をロック内で行う。Sheetsの手編集との競合や原子的トランザクションを保証するものではない。
 
-画像キャッシュは最大7件・assetId＋versionの画面内メモリのみ。同時取得はまとめ、各表示時にgetAssetで版を再確認する。現行APIには画像版だけの取得がないため、順次表示のRPCやbase64転送は省略しない。版更新・取得失敗・デコード失敗時は古いキャッシュを破棄する。
+旧画像キャッシュの仕様は廃止。標準カードの表示に画像RPCや画像設定を必要としない。

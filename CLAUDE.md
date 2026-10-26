@@ -4,16 +4,16 @@
 
 ## 今回のプロジェクト
 
-**スキルじゃんけんラボ**は、仲間集め・CPUじゃんけん・固定スキル合成から、1対多・多対多のデータのつながりを学ぶWebアプリ。GAS / HTML Service / JavaScript / Sheets / Driveを使い、Geminiは提供者の画像事前制作に限定する。
+**スキルじゃんけんラボ**は、仲間集め・CPUじゃんけん・固定スキル合成から、1対多・多対多のデータのつながりを学ぶWebアプリ。GAS / HTML Service / JavaScript / Sheets / Driveを使い、Geminiは保存済み対戦への短いセリフに使う。画像生成は廃止し、画像なしのカード表示を標準にする。
 
-初版は提供者の管理端末・本人限定公開・P001の1プレイヤー・行動200件まで。仲間3体、スキル4種、固定レシピ1件、5画面＋結果モーダルを約1日（8時間）の目標で作る。2026年10月26日、①土台作成は完了。②ではSheetsの8表初期化・読込、非公開Driveの検証とWebP登録・取得、Gemini画像生成用アダプターを実装した。専用GASの本人限定試験配置で初期記録の表示と再読込を確認済み。テスト用WebPの実配信を確認済み。Geminiの認証・モデル一覧取得は成功したが画像生成はHTTP 429。提供者から無料プラン／未確認との回答があり、課金・割当の確認待ち。別アカウント拒否は未確認。ゲーム機能・最終受入は未完了。③ではActions追記・最新状態復元・同一要求の再送・保留要求の復元・画像キャッシュ・検証付きバックアップコピーを実装した。ゲームの変更APIと5画面は後続。③の画像生成から採用までの確認は②のGemini HTTP 429解消待ち。
+初版は提供者の管理端末・本人限定公開・P001の1プレイヤー・行動200件まで。仲間3体、スキル4種、固定レシピ1件、5画面＋結果モーダルを約1日（8時間）の目標で作る。2026年10月26日、①土台作成は完了。②ではSheetsの8表初期化・読込、非公開Driveの検証とWebP登録・取得、Gemini画像生成用アダプターを実装した。専用GASの本人限定試験配置で初期記録の表示と再読込を確認済み。テスト用WebPの実配信を確認済み。Geminiの認証・モデル一覧取得は成功したが画像生成はHTTP 429。当時の画像用モデルにはAPI無料枠がなく、無料プランでの待機・再試行では解決しない。別アカウント拒否は未確認。ゲーム機能・最終受入は未完了。③ではActions追記・最新状態復元・同一要求の再送・保留要求の復元・画像キャッシュ・検証付きバックアップコピーを実装した。ゲームの変更APIと5画面は後続。画像生成は廃止し、画像素材なしのカード表示と対戦後のAIセリフへ再設計した。現行Web v2の画像コード撤去とテキストAIは未実装。旧画像生成のHTTP 429は待機課題から外す。
 
 ## Source of Truth
 
 - Project overview: `README.md`
 - 共通作業ガイド・MVPの不変条件: [AGENTS.md](AGENTS.md)（作業前に読む）
 - Documentation index: `docs/00_index.md`
-- 現行仕様の正本: [要件・画面](docs/01_requirements.md) / [構成・API](docs/02_architecture.md) / [ドメイン](docs/03_domain_model.md) / [開発・画像制作](docs/04_workflows.md) / [データ・保存](docs/05_data_model.md) / [エラー](docs/06_error_policy.md) / [テスト・結果記録](docs/07_test_strategy.md) / [公開・復旧](docs/08_release_runbook.md)。
+- 現行仕様の正本: [要件・画面](docs/01_requirements.md) / [構成・API](docs/02_architecture.md) / [ドメイン](docs/03_domain_model.md) / [開発・AI連携](docs/04_workflows.md) / [データ・保存](docs/05_data_model.md) / [エラー](docs/06_error_policy.md) / [テスト・結果記録](docs/07_test_strategy.md) / [公開・復旧](docs/08_release_runbook.md)。
 - 反映確認と実装進捗: [反映対応表](docs/09_source_traceability.md) / [MVP実装バックログ](docs/tasks/02_backlog/mvp-implementation.md)。
 - Harness 全体像: `.claude/README.md`（このリポジトリの AI 制御一式）
 - Harness アーキ本体: `docs/specs/kurosawa-thin-harness-architecture.md`（tool-agnostic マスター）＋ repo 固有 instantiation（`docs/specs/{runtime-protocol,capability-boundary,change-boundary,evidence-policy,judgment-memory}.md`）
@@ -34,7 +34,7 @@ Node.js 22以上。ルートで `npm ci`、必要なら `npx playwright install 
 - GASソースは `src/server/` の通常JS、画面は `src/client/`。controllers・core・application・adaptersに分け、ゲーム固有のRulesは後続実装。保存はdb/actions.jsのcommitAction_へ状態遷移を注入する。実配置用のアダプターは未接続時にエラーとなり、仮データへ自動切替しない。Nodeのscripts/testsはES modulesで、配布物に含めない。
 - `doGet()` でHTMLを配信し、画面通信は `google.script.run` → `api(request)`。独立RESTサーバーは設けず、内部・管理関数は末尾 `_` とする。
 - Sheetsは `Players` / `Characters` / `Skills` / `CharacterSkills` / `Recipes` / `Assets` / `Actions` / `Settings` の8シート。状態は最新Actions行の `stateJson`、0件時のみPlayersの初期JSONを使う。
-- GAS実行時のAPIキー・画像モデルID・Spreadsheet ID・DriveフォルダーIDはScript Propertiesで管理する。`env/` / `doppler.yaml` は既存の開発用ひな形であり、GASへの同期を前提にしない。秘密情報をコミット・画面配信・ログ出力しない。
+- GAS実行時のAPIキー・テキストモデルID・AI有効化設定・Spreadsheet IDはScript Propertiesで管理する。`env/` / `doppler.yaml` は既存の開発用ひな形であり、GASへの同期を前提にしない。秘密情報をコミット・画面配信・ログ出力しない。
 - 設計・運用ドキュメントは `docs/` 配下。権威順位と更新規約は `docs/00_index.md` に従う。
 - パス別ルールは `.claude/rules/` 配下に置く。
 - 一回性の作業計画は `docs/tasks/`、繰り返し使う作業手順は `.claude/skills/` に置く。
@@ -45,10 +45,10 @@ Node.js 22以上。ルートで `npm ci`、必要なら `npx playwright install 
 - 変更処理は `ScriptLock` 内で検証し、入力・結果・次状態をActionsへ1行追記、flush後に再読込確認する。同じ `requestId` の照合はversion・200件上限の判定より先。再送で乱数・加減算を繰り返さない。
 - 保留要求は同じID・入力・`expectedVersion` で手動再送し、解決後にbootstrapで最新化する。不整合時は停止し、自動初期化しない。
 - 提供者本人限定の公開とし、任意playerId・Drive fileIdをAPIで受け付けない。所有・習得・適性・勝敗・ポイントはサーバー側で検証・計算する。
-- 採用画像は事前生成・変換・大人の確認を経たWebP7枚（各512×512以下、100KiB以下）。遊び中にGeminiを呼ばず、画像失敗時は代替表示で継続する。
+- 画像生成・画像登録・getAsset配信は廃止する。図形・名前・効果文で3体と4スキルを表す。AIセリフは対戦保存後の別RPCで生成し、AI停止時は定型文で継続する。詳細は[再設計](docs/specs/ai-battle-dialogue.md)。現行v2の撤去・新機能実装は未完了。
 - 学習画面は実データを使う。360px幅で収め、主ボタン44px以上、原則16px以上の本文、代替テキスト・読み上げ・キーボード操作を備える。
-- 実装順は①土台作成→②GAS・Sheets・Drive・Gemini疎通→③保存・再送・画像管理基盤→ゲームルール・5画面・学習画面→AC01〜AC23。勝敗9組・加算12組から、再送・競合・復旧・実機・アクセス制限まで証跡を残す。WebP7枚が未達なら機能試作と記録する。
-- 課金・対人戦・複数プレイヤー・一般公開・遊び中の生成など、初版の対象外機能を追加しない。詳細な範囲は[要件](docs/01_requirements.md)と `AGENTS.md` を参照する。
+- 実装順は①土台作成→②GAS・Sheets・Drive・Gemini疎通→③保存・再送・バックアップ基盤→画像機能撤去・ゲームルール・5画面・AIセリフ・学習画面→AC01〜AC26。勝敗9組・加算12組から、再送・競合・復旧・実機・アクセス制限まで証跡を残す。画像制作は受入条件から外し、AIセリフはAC24〜AC26で検証する。
+- 課金・対人戦・複数プレイヤー・一般公開・画像生成・自由チャットなど、初版の対象外機能を追加しない。詳細な範囲は[要件](docs/01_requirements.md)と `AGENTS.md` を参照する。
 
 ## 作業ルール
 
