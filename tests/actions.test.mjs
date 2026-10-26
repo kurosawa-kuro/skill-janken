@@ -135,28 +135,28 @@ test("every journal row is validated; corruption cannot silently roll state back
       row[6] = "{";
     },
     (row) => {
-      row[7] = "null";
+      row[7] = "C99";
     },
     (row) => {
-      row[8] = JSON.stringify({ ...JSON.parse(row[8]), points: -1 });
+      row[8] = "S04";
     },
     (row) => {
-      row[8] = JSON.stringify({ ...JSON.parse(row[8]), points: 99 });
+      row[9] = "invalid-hand";
     },
     (row) => {
-      row[8] = JSON.stringify({
-        ...JSON.parse(row[8]),
-        ownedCharacterIds: ["C01", "C99"],
-      });
+      row[10] = "paper";
     },
     (row) => {
-      row[9] = "2026-02-30T00:00:00.000Z";
+      row[11] = "2026-02-30T00:00:00.000Z";
     },
     (row) => {
-      row[10] = 2;
+      row[12] = 1;
     },
     (row) => {
-      row[11] = 1;
+      row[13] = 1;
+    },
+    (row) => {
+      row[14] = "bad-hash";
     },
   ];
   for (const corrupt of changes) {
@@ -196,22 +196,11 @@ test("200-row limit still permits replay and rejects new writes before producer"
   let last;
   for (let i = 0; i < 200; i++) {
     last = request(i);
-    const input = gas.context.normalizedInput_(last),
-      change = round(state);
-    rows.push([
-      randomUUID(),
-      "P001",
-      i + 1,
-      last.requestId,
-      gas.context.payloadHash_(input),
-      "ROUND",
-      gas.context.jsonCell_(input),
-      gas.context.jsonCell_(change.result),
-      gas.context.jsonCell_(change.state),
-      new Date().toISOString(),
-      1,
-      2,
-    ]);
+    const change = round(state);
+    const row = gas.context.createActionRow_(last, change);
+    rows.push(
+      gas.context.tableDefinitions_().Actions.map((column) => row[column]),
+    );
     state = change.state;
   }
   assert.equal(gas.context.readSnapshot_().data.limits.remainingActions, 0);

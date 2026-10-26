@@ -19,13 +19,13 @@ test("real repository adapter maps typed initial tables to the public contract",
 
 test("repository refuses broken headers, blank keys, changed types, or invalid actions", () => {
   const corruptions = [
-    (gas) => gas.sheets.get("Assets").rows.splice(2, 0, Array(11).fill("")),
+    (gas) => gas.sheets.get("Skills").rows.splice(2, 0, Array(5).fill("")),
     (gas) => gas.sheets.get("Players").rows[0].reverse(),
     (gas) => gas.sheets.get("Characters").rows[1].splice(0, 1, ""),
-    (gas) => gas.sheets.get("Characters").rows[1].splice(4, 1, "true"),
+    (gas) => gas.sheets.get("Characters").rows[1].splice(3, 1, "true"),
     (gas) => gas.sheets.get("Actions").rows.push(["", "P001", 1]),
     (gas) => gas.sheets.get("Actions").rows.push(["action1", "P001", 1]),
-    (gas) => gas.sheets.get("Assets").rows.push(["A_C01"]),
+    (gas) => gas.book.insertSheet("Assets"),
   ];
   for (const corrupt of corruptions) {
     const gas = createSheetGas();
@@ -37,13 +37,13 @@ test("repository refuses broken headers, blank keys, changed types, or invalid a
   }
 });
 
-test("setup creates eight tables only for a new book and never overwrites configured data", () => {
+test("setup creates six tables only for a new book and never overwrites configured data", () => {
   const gas = createSheetGas();
   gas.props.delete("JANKEN_SPREADSHEET_ID");
   assert.equal(gas.run("setupLab_()").created, true);
-  assert.equal(gas.sheets.size, 8);
+  assert.equal(gas.sheets.size, 6);
   assert.equal(gas.sheets.get("Actions").rows.length, 1);
-  assert.equal(gas.sheets.get("Characters").rows[1][4], true);
+  assert.equal(gas.sheets.get("Characters").rows[1][3], true);
   const before = structuredClone(
     [...gas.sheets.values()].map((sheet) => sheet.rows),
   );

@@ -1,6 +1,6 @@
 # AGENTS.md
 
-2026-10-26追補：利用者の指示に従い、実装を先に完了させ、検証は最後にまとめる。ゲームの下部固定ナビ・スキル図形・フォーカス復帰・手動再送結果表示・画面復帰時の状態更新、管理生成の状態表示・読込失敗時の変更停止、エディタ専用設定コマンドまで実装済み。現行MVPのコード実装残件は0。今回の追補は未検証。既存46テストのPASSは追補前の5b6bb44までの記録であり、最新変更の合格を示さない。実環境の反映も未実施。
+2026-10-26追補：利用者の指示に従い、検証は最後にまとめる。基本機能の追加修正に続き、DBを物理スキーマ2へ再設計した。ソース・設計書・テストコードの更新は実施済み、検証実行・実DB移行・配置は未実施。
 
 AI コーディングエージェント（Claude Code / Codex / GitHub Copilot 等）共通の作業ガイド。
 Codex は作業前にこのファイルを読むため、ここには repo 共通方針のみ記す。
@@ -11,11 +11,11 @@ Codex は作業前にこのファイルを読むため、ここには repo 共�
 - 名称: スキルじゃんけんラボ。仲間集め・スキル選択・CPUじゃんけんを通して、1対多・多対多のデータのつながりを学ぶ小規模Webアプリ。
 - 初版: 提供者の管理端末・本人限定公開・P001の1プレイヤー・行動記録200件まで。小学校中〜高学年を仮対象とし、大人が伴走する。
 - 技術: GAS（HTML Service / JavaScript）、HTML/CSS/JavaScript、Google Sheets、非公開のGoogle Drive。Geminiは管理画面でのセリフ事前生成にだけ使う。画像生成・画像登録・配信は廃止対象で、標準表示はHTML/CSSと名前・効果文。
-- 現状: 2026-10-26：合成・画像機能を撤去し、3スキル・6適性のゲーム4画面、保存・再送、学習表示、管理画面でのAIセリフ事前生成・採用をローカル実装済み。npm run check（46テスト・30実行ファイルのビルド・360px幅Chromium）が成功。実GASは従来のWeb v2のまま。新ブックへの切替・新コード配置・Gemini実生成・実機と別アカウントの確認は未完了。 [最新記録](docs/tasks/03_active/mvp-release-verification.md)を参照。
+- 現状: 2026-10-26：ゲーム基本機能と管理画面のAIセリフ事前生成はローカル実装済み。続いてDBを物理スキーマ2（ゲーム6表・型付きActions）へ再設計し、旧形式の読取りと非破壊移行を実装した。最新変更は未検証・実GAS未反映。46件PASSは5b6bb44時点の過去記録であり、最新変更の合格を示さない。 [最新記録](docs/tasks/03_active/mvp-release-verification.md)を参照。
 
 ## 最初に読む仕様
 
-現行仕様の正本は `docs/01_requirements.md`〜`docs/08_release_runbook.md`。日々の作業は[文書索引](docs/00_index.md)から読む。本ファイルは要約であり、詳細仕様の代わりにしない。製品文書は設計段階で、アプリ実装・受入試験の完了を示さない。
+現行仕様の正本は `docs/01_requirements.md`〜`docs/08_release_runbook.md`。日々の作業は[文書索引](docs/00_index.md)から読む。本ファイルは要約であり、詳細仕様の代わりにしない。製品文書は仕様の正本であり、最新実装の検証完了を示さない。
 
 - 製品仕様: [要件・画面](docs/01_requirements.md) / [構成・API](docs/02_architecture.md) / [用語・ゲームルール](docs/03_domain_model.md)。
 - 実装と運用: [開発・AI連携](docs/04_workflows.md) / [保存・再送](docs/05_data_model.md) / [エラー](docs/06_error_policy.md) / [試験結果の記録先](docs/07_test_strategy.md) / [公開・復旧](docs/08_release_runbook.md)。
@@ -34,7 +34,7 @@ Codex は作業前にこのファイルを読むため、ここには repo 共�
 
 - ゲームの公開apiはbootstrap / drawCharacter / playRound / getRelationsの4操作。bootstrapで採用済みセリフ集も取得する。getAssetと旧getBattleLine案は廃止。管理画面は別ルート・adminApiとし、各管理要求をJANKEN_ADMIN_EMAILと実利用者で認可する。内部関数は末尾 _。
 - `playerId` はサーバーでP001に固定し、クライアントから任意のplayerId・勝敗・加算値・Drive fileIdを受け付けない。所有・初期習得・適性・手をサーバーで検証する。
-- 成功した変更は `Actions` に入力・結果・次状態を1行追記する。最新行の `stateJson` が現在状態の正本。0件の場合だけ `Players.initialStateJson` を使う。現在状態を別表に二重保存せず、既存行を上書きしない。
+- 物理スキーマ2はゲーム6表。成功操作の入力・抽選結果を型付き15列のActionsへ1行追記し、初期所有＋全履歴から状態を復元する。状態JSON・所有・累計スコアを二重保存しない。旧物理1は読取り専用。マスター2の履歴だけ別ブックへ明示移行でき、元データとバックアップを保持する。
 - 変更は `ScriptLock` 内で再読込・検証し、1行の `setValues` → `flush` → 再読込確認を行う。SheetsにDB同等のトランザクション保証を仮定しない。
 - 変更要求には `requestId` と `expectedVersion` を付ける。同一IDの照合をversion・200件上限の判定より先に行い、同じ内容なら保存済み結果、異なる内容なら `REQUEST_ID_CONFLICT` を返す。乱数や加減算をやり直さない。
 - 通信失敗時は同じID・入力・versionで手動再送する。保留要求は `sessionStorage` に保持し、再送解決後は `bootstrap` で最新化する。保存後に演出し、通信中は変更操作を無効にする。
@@ -44,7 +44,7 @@ Codex は作業前にこのファイルを読むため、ここには repo 共�
 
 ## セットアップ / 主要コマンド
 
-Node.js 22以上。ルートで `npm ci`、必要なら `npx playwright install chromium`、`npm run check`。checkは整形確認→46件のNodeテスト→ビルド→Chromium確認。`npm run preview` は127.0.0.1:4173の仮データ表示で、実GASではない。Makefileはnpmのラッパー。`npm run build` は30実行ファイルと.claspignoreのみをdistへ出力し、アップロードしない。scripts/testsや接続設定を配置物へ混ぜない。
+Node.js 22以上。ルートで `npm ci`、必要なら `npx playwright install chromium`、`npm run check`。checkは整形確認→Nodeテスト→ビルド→Chromium確認。`npm run preview` は127.0.0.1:4173の仮データ表示で、実GASではない。Makefileはnpmのラッパー。`npm run build` は31実行ファイルと.claspignoreのみをdistへ出力し、アップロードしない。scripts/testsや接続設定を配置物へ混ぜない。
 
 GASコードはsrc/serverの通常JS、画面はsrc/client、Nodeの開発ツールはscripts/testsのES modules。実アダプターが未接続の間はエラーで停止し、実行時に仮データへ切り替えない。接続設定のキー名はdocs/04・05に記載する。
 

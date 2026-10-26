@@ -2,15 +2,30 @@ import { createGas } from "./gas.mjs";
 
 // Minimal Sheets test double, adapted from photo-diary's cell/range mock.
 // Keeps native numeric/boolean types and exposes partial-row corruption.
-export function createSheetGas(masterVersion = 2) {
+export function createSheetGas(
+  masterVersion = 2,
+  storageSchemaVersion = masterVersion === 1 ? 1 : 2,
+) {
   const gas = createGas({
     properties: { JANKEN_SPREADSHEET_ID: "test-sheet" },
   });
   const initial = JSON.parse(
-    JSON.stringify(gas.run(`initialTables_(${masterVersion})`)),
+    JSON.stringify(
+      gas.run(
+        storageSchemaVersion === 1
+          ? `legacyInitialTables_(${masterVersion})`
+          : "initialTables_()",
+      ),
+    ),
   );
   const definitions = JSON.parse(
-    JSON.stringify(gas.run("tableDefinitions_()")),
+    JSON.stringify(
+      gas.run(
+        storageSchemaVersion === 1
+          ? "legacyTableDefinitions_()"
+          : "tableDefinitions_()",
+      ),
+    ),
   );
   const sheets = new Map();
   function sheet(name, rows) {

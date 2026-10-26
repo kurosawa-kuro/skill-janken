@@ -17,7 +17,7 @@
 - ゲームは起動時の採用集からローカル選択。通常対戦は保存RPC1回。ゲーム中の生成・セリフ専用RPCゼロ。
 - 追加管理2表を含むバックアップ・復元照合。旧8表のみでも検証可能。
 
-## 検証結果
+## 過去の検証結果（5b6bb44）
 
 Windows / Node.js v24.21.0、Chromium（版はartifacts/mvp-browser-result.jsonに記録）、360×800・reduced-motionで `npm run check` 成功。
 
@@ -43,10 +43,10 @@ BrowserAct 1.4.3のChrome Direct接続が `Error 230404: Unknown error` で失�
 
 - [ ] 認証済みChromeへの操作接続を復旧する。
 - [ ] 通常distと一時operatorビルドを区別してHEADへ反映。旧画像ファイル等のリモート残存を検出・除去する。
-- [ ] `node scripts/operator.mjs create` のoperatorRunをエディタで実行し、新規版2ブックのID・非公開状態・初期値を記録。既存ブックは上書きしない。
+- [ ] `node scripts/operator.mjs create` のoperatorRunをエディタで実行し、新規物理2・マスター2ブックのID・非公開状態・初期値を記録。既存ブックは上書きしない。
 - [ ] `activate NEW_ID OLD_ID` を生成・実行し、旧ブックの検証付きバックアップ後に接続先を切替。旧Actions・旧画像素材を削除しない。
 - [ ] Script PropertiesのJANKEN_ADMIN_EMAILを提供者の実利用者に設定。GEMINI_TEXT_MODELをgemini-3.1-flash-lite、JANKEN_AI_TEXT_ENABLEDをtrueに設定。既存GEMINI_API_KEYは値を表示せず保持する。課金変更はしない。
-- [ ] エディタ専用operator-runを除去し、通常30ファイルだけであることをリモート読戻し照合。MYSELF / USER_DEPLOYINGのWeb版を更新する。
+- [ ] エディタ専用operator-runを除去し、通常31実行ファイルだけであることをリモート読戻し照合。MYSELF / USER_DEPLOYINGのWeb版を更新する。
 - [ ] 管理画面で勝ち・負け・あいこの実テキスト生成を確認し、候補を読んで採用・公開・解除。実測の成否を記録する。
 - [ ] 新しい実GASでGolden Path、再読込、生成ゼロ、コピーへのバックアップ・復元を確認する。
 - [ ] 本人・未ログイン・別アカウントのアクセス制限とSheetsの非公開を確認する。
@@ -74,3 +74,15 @@ BrowserAct 1.4.3のChrome Direct接続が `Error 230404: Unknown error` で失�
 - [ ] configureの本人照合・キー非露出・有効／無効設定・部分失敗。
 
 実装は0件、配置・最終検証は上記に残す。今回実行したのはソース編集とPrettierによる整形だけで、テスト・ビルド・ブラウザー操作・外部サービス接続は実行していない。
+
+## DB再設計の追加作業（2026-10-26、実装済み・検証待ち）
+
+[DB再設計](database-redesign.md)を追加実装した。物理スキーマ2はゲーム6表、Actions15列。旧物理1・マスター2は `migrate SOURCE_ID` で進行と管理2表を別ブックへ保持できる。旧マスター1は保管してcreateで新規ゲームとする。採用済み集と日次生成上限の扱いは変えない。
+
+- [ ] 最新ソースで全テスト・整形確認・build・ブラウザーをまとめて実行。31実行ファイルを照合。
+- [ ] 実Sheetsのコピーで旧形式読取り、マスター2移行、状態・履歴・採用集の一致、元データ不変、接続先不変を確認。
+- [ ] 不完全行・型不正・ハッシュ不一致・移行中断からの停止と復旧を確認。
+- [ ] 初期化・切替で既存ブックや生成予約を消さず、異なるdatasetIdの保留を再送しないことを確認。
+- [ ] 200行の読込・対戦保存の時間を実機で計測。
+
+この追加実装ではテスト・build・ブラウザー・Googleの実データ操作を実施していない。

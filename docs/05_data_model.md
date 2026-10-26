@@ -1,181 +1,155 @@
-# 05 データモデル — スキルじゃんけんラボ
+﻿# 05 データモデル — スキルじゃんけんラボ
 
-反映日：2026年10月26日。初期資料（退避済み）：[03_設計基礎書.md](archive/スキルじゃんけんラボ_企画・仕様・設計/03_設計基礎書.md)・[02_仕様書.md](archive/スキルじゃんけんラボ_企画・仕様・設計/02_仕様書.md)（v1.0）。
+2026-10-26改訂。ゲーム仕様を基準にDBを再設計した。物理スキーマ2・ゲームマスター2を現行とする。設計とローカルコードを変更し、実DBの変更・移行・検証実行はまだ行っていない。[判断理由](adr/0004-rebuild-game-database.md)／[作業記録](tasks/03_active/database-redesign.md)。
 
-本書は現行仕様を定義する。ローカル実装・検証済み範囲と未完了の実環境確認は[最新記録](tasks/03_active/mvp-release-verification.md)および[テスト戦略](07_test_strategy.md)で区別する。参照元と本書の役割・更新規約は[索引](00_index.md)を参照。
+## 設計方針
 
-## 設定の置き場所
+P001の1人・成功操作200件・仲間3体・基本スキル3種・適性6組に限定する。画像・合成・通貨・スキル解放は存在しない。Google Sheetsを継続し、ゲーム用6表と任意のセリフ管理2表を置く。
 
-| 種別 | 保存先・扱い |
-|---|---|
-| APIキー・テキストモデルID・管理AI有効化設定・管理者メール・Spreadsheet ID | GASのScript Properties。編集者は提供者に限定。キーをHTML・Sheets・ブラウザ保存領域・ログへ出さない。画像モデル・画像フォルダーの参照は撤去対象 |
-| ゲーム全体の設定 | Settingsシート。新規MASTER_VERSION=2、MAX_ACTIONS=200、SCHEMA_VERSION=1（旧版1は保管用） |
-| 旧画像データ | Assetsシートは過去データ互換用に保管。新ゲームでは未使用。Drive IDを画面へ出さない |
-| プレイヤーの現在状態 | 最新Actions行のstateJson。0件のときだけPlayers.initialStateJson |
-| 未解決の変更要求 | 端末のsessionStorageに要求全体を保持。現在状態の正本にしない |
-| 選択中の仲間・スキル | 端末内の表示状態。各対戦要求で送信し、サーバーで検証 |
-| ローカル開発用設定 | 既存env/・doppler.yamlはひな形。GASへの同期は未実装。秘密情報はコミットしない |
+マスターと行動の事実を保存する。所有仲間、習得一覧、累計スコア、勝敗、加算点はそこから復元できるため保存しない。以前の入力・結果・次状態JSONの重複をなくす。ゲームの1操作は引き続きActionsへの1行追記だけであり、所有表・スコア表との複数書込みを必要としない。
 
-①土台作成で設定読込名を `JANKEN_SPREADSHEET_ID` / `JANKEN_DRIVE_FOLDER_ID` / `GEMINI_API_KEY` / `GEMINI_IMAGE_MODEL` と定義した。②で新規8表の作成・初期マスター検証・読取とAssets登録を実装した。初期化済みブックは検証のみで上書きしない。③で全Actionsの検証・追記・最新状態復元・同一要求の再送を実装した。0件時だけ初期状態を使い、不正行があればDATA_INTEGRITY_ERRORで停止する。ゲーム固有の操作生成・画面もローカル実装済み。
+SheetsにトランザクションやPK・FKの強制を期待せず、アプリが型・キー・関連・履歴を検証する。不完全行があれば停止し、自動初期化や過去行への巻戻しをしない。
 
-## 保存方針
+## 物理テーブル
 
-Sheetsをデータベース同等の複数テーブル取引として扱わない。所有・ポイント・習得を別々のシートへ逐次更新すると、途中失敗時の復旧が重くなる。
+列は次の順序に固定する。1行目は完全一致のヘッダー、以後はデータ。余分な列・途中空行・欠落キーは拒否する。日時はUTCのミリ秒付きISO文字列。数値は安全な整数、booleanは実際の真偽値とし、文字列の数字・trueは認めない。
 
-そこで初版は、成功した操作1件ごとに、入力・結果・操作後の小さな状態スナップショットをActionsへ1行追記する。最新行のstateJsonを正とし、プレイヤーの現在状態を別の表に二重保存しない。正常な1操作では1回の行書込みだけを行う。
-
-この方式は1人・200件までのデモに限った簡略化。Sheetsに厳密なDBトランザクションや障害時の完全な原子性を保証させる設計ではない。不完全行を見つけたら停止し、管理者がバックアップと照合する。
-
-多対多の学習対象は実際の正規化テーブルCharacterSkillsで維持する。状態JSONは運用を小さくするための実装上の選択であり、「リレーショナル設計では何でもJSONにする」という教材にはしない。
-
-## シート・状態・関連データ
-
-### 共通ルール
-
-- スプレッドシート1冊に以下のゲーム用8シートを置く。セリフ管理は後述の任意2表を追加する。1行目をヘッダー、2行目以降をデータとする。
-- IDは不変の文字列。主キーは重複禁止、外部キーは存在確認を行う。Sheets自体は外部キー制約を強制しない。
-- 日時はUTCのISO 8601文字列、表示はAsia/Tokyo。ポイント・連番・バージョンは非負整数。
-- boolean列は真偽値を使う。列順を固定し、起動時にヘッダー一致を検証する。
-- マスター編集は提供者だけが行い、デモ中は編集しない。検証完了後にMASTER_VERSIONを更新する。
-- 子どもからの自由入力文字列を保存しない。IDと列挙値を許可リストで検証する。
-
-### シート定義
-
-以下は既存データと互換性を保つ8表のスキーマ。Recipesは旧合成、AssetsとassetId列は旧画像機能の履歴として保管し、新仕様のゲーム機能には使用しない。既存行の削除や移行は今回行わない。
-
-| シート | 列（左から順） | キー・制約 |
+| 表 | 列（左から順） | キー・制約 |
 |---|---|---|
-| Players | playerId, displayName, initialStateJson, createdAt | PK playerId。初版P001のみ。初期JSONはversion 0 |
-| Characters | characterId, name, assetId, sortOrder, active | PK characterId。assetIdは旧互換列（新規は空）。active=trueのみ抽選候補 |
-| Skills | skillId, name, effectCode, bonus, assetId, active | PK skillId。新規はS01〜S03・3種の効果コードだけ、bonus=1 |
-| CharacterSkills | characterId, skillId | 複合PK (characterId, skillId)。双方にFK |
-| Recipes | recipeId, ingredientA, ingredientB, pairKey, resultSkillId, cost, active | 旧版の互換用。新規マスターではヘッダーのみ・データ0行 |
-| Assets | assetId, sourceFileId, webpFileId, mimeType, byteSize, version, status, promptVersion, modelId, generatedAt | 旧PK assetId。旧状態はDRAFT/READY/REJECTED。既存データの保管専用 |
-| Actions | actionId, playerId, seq, requestId, payloadHash, type, inputJson, resultJson, stateJson, createdAt, schemaVersion, masterVersion | PK actionId。FK playerId。playerId＋seq、playerId＋requestIdが一意 |
-| Settings | key, value | PK key。新規MASTER_VERSION=2、MAX_ACTIONS=200、SCHEMA_VERSION=1（旧版1は保管用） |
+| Players | playerId, displayName, initialCharacterId, createdAt | PK playerId、P001の1行。initialCharacterIdはCharactersへのFK、C01固定 |
+| Characters | characterId, name, sortOrder, active | PK characterId、C01〜C03の3行。sortOrderは1〜3で一意、active=true |
+| Skills | skillId, name, effectCode, bonus, active | PK skillId、S01〜S03の3行。効果は下表、bonus=1、active=true |
+| CharacterSkills | characterId, skillId | 複合PK、双方にFK、下記6組に一致 |
+| Actions | actionId, playerId, seq, requestId, payloadHash, type, datasetId, characterId, skillId, playerHand, cpuHand, createdAt, schemaVersion, masterVersion, recordHash | 15列。追記専用、最大200行。詳細は後述 |
+| Settings | key, value | PK key。MASTER_VERSION=2、MAX_ACTIONS=200、SCHEMA_VERSION=2の3行だけ |
 
-AssetsのDrive IDはサーバー内で扱い、クライアントに返さない。sourceFileIdは生成元の画像、webpFileIdは変換後の採用画像。APIキー・フォルダーID・スプレッドシートIDはSettingsではなくScript Propertiesに置く。
+Players.displayName、Characters.name、Skills.nameは前後空白なし・1〜32 Unicodeコードポイント・制御文字なし。初期名は「たんけんたい」「ひのこ」「しずく」「このは」と下表。表示名の変更とマスター行の並べ替えは参照を壊さない。Actionsは物理行順もseqと一致させる。
 
-### 状態JSON
+| skillId | 初期名 | effectCode | 適性を持つ仲間 |
+|---|---|---|---|
+| S01 | かちのひらめき | WIN_BONUS | C01 / C03 |
+| S02 | まけてもいっぽ | LOSE_BONUS | C01 / C02 |
+| S03 | あいこのわ | DRAW_BONUS | C02 / C03 |
 
-```json
-{
-  "schemaVersion": 1,
-  "version": 0,
-  "points": 0,
-  "ownedCharacterIds": ["C01"],
-  "unlockedSkillIds": ["S01", "S02", "S03"]
-}
-```
+効果・適性・初期所有・得点計算はmasterVersion=2の不変条件。表示名以外の仕様変更はマスター版と移行設計を改訂する。Settingsの版番号だけを手編集して互換扱いにしない。
 
-新規pointsは全ROUNDのearnedPointsの累計で、消費・減算しない。unlockedSkillIdsはS01〜S03の3要素で固定する。
+Recipes、Assets、assetId、initialStateJson、inputJson、resultJson、stateJsonは物理スキーマ2に作らない。新ブックに旧Recipes/Assetsが混在した場合も停止する。旧ブックの表・列は後述の読取り互換としてそのまま保管する。
 
-配列は重複なし・昇順。現在選択中のキャラとスキルはサーバー状態に含めず、各対戦リクエストで送る。stateJsonのversionはActions.seqと一致し、成功する変更ごとに1増える。読み取り・失敗操作では増えない。
+## Actionsのデータ辞書
 
-Actionsが0件ならPlayers.initialStateJsonを使う。行があるのに壊れていた場合は、正常な過去行へ黙って戻らない。初版の最大サイズでは状態JSONは十分小さいが、各JSONセルを8KB以下に検証し、無制限の履歴や画像を埋め込まない。
+| 列 | 型・意味・制約 |
+|---|---|
+| actionId | サーバー採番UUID、PK、大文字小文字を区別せず一意 |
+| playerId | PlayersへのFK、P001固定 |
+| seq | 成功操作の連番、1〜200、欠落・重複禁止。playerId＋seqが一意 |
+| requestId | 要求UUID。playerId＋requestIdが一意、大文字小文字を区別しない。新規保存は小文字 |
+| payloadHash | 正規化した要求のSHA-256。再送内容の一致判定 |
+| type | DRAW / ROUNDのみ |
+| datasetId | 要求元ブックID文字列のcanonical JSONをSHA-256化した64桁小文字hex。実Drive IDを公開しない |
+| characterId | CharactersへのFK。DRAWは獲得仲間、ROUNDは対戦に選んだ所有仲間 |
+| skillId | ROUNDではSkillsへのFKかつ当該仲間とのCharacterSkillsが存在。DRAWでは空文字 |
+| playerHand | ROUNDではrock / scissors / paper、DRAWでは空文字 |
+| cpuHand | サーバーが抽選した手。ROUNDではrock / scissors / paper、DRAWでは空文字 |
+| createdAt | サーバー保存時刻、UTCのISO文字列 |
+| schemaVersion | 物理スキーマ版2 |
+| masterVersion | 計算に使うゲームルール・マスター版2 |
+| recordHash | この列を除く全列をキー名付きオブジェクトとしてcanonical JSON化したSHA-256 |
 
-### 初期関連データ
+DRAWのcharacterIdは、その時点で未所有の有効仲間に限る。ROUNDのスキルは初期習得済みかつ適性ありに限る。初期仲間とDRAWの合計で所有を決め、重複獲得を認めない。公開要求からCPUの手・得点・勝敗・任意playerIdは受け取らない。
 
-新規masterVersion=2のCharacterSkillsは次の6行とする。
+payloadHashの対象は `{op,expectedVersion,datasetId,payload}`。DRAWはpayload={}、ROUNDは `{characterId,skillId,hand}`、expectedVersionはseq−1。オブジェクトキーを再帰的に辞書順へ並べ、UTF-8でSHA-256化する。requestIdはハッシュ対象外。
 
-```csv
-characterId,skillId
-C01,S01
-C01,S02
-C02,S02
-C02,S03
-C03,S01
-C03,S03
-```
+recordHashはCPUの手や獲得仲間など、入力ハッシュだけでは保護されない保存結果の誤編集も検出する。署名・改ざん防止機構ではなく、権限を持つ編集者が再計算した変更や末尾行の削除まで検知する保証はない。編集権限を提供者に限定し、試遊中の直接編集を禁止する。
 
-新規RecipesとAssetsはヘッダーのみ（データ0行）。Characters/SkillsのassetIdは空文字。旧ブックのR01・S04・Assetsは保管し、今回の文書変更で削除しない。
-
-### リレーション
+## 関連と復元する状態
 
 ```mermaid
 erDiagram
-    Players ||--o{ Actions : "1人の複数記録"
-    Characters ||--o{ CharacterSkills : "適性"
-    Skills ||--o{ CharacterSkills : "共有されるスキル"
+    Characters ||--o{ Players : initialCharacterId
+    Players ||--o{ Actions : playerId
+    Characters ||--o{ Actions : characterId
+    Skills o|--o{ Actions : "skillId ROUNDのみ"
+    Characters ||--o{ CharacterSkills : characterId
+    Skills ||--o{ CharacterSkills : skillId
 ```
 
-現行ゲームのリレーションは上の3本で表す。旧画像・合成の表は教材用対応図に含めない。所有は状態JSON内の集合であり、将来DBへ移す場合はPlayerCharactersへ分離する。
+| 論理的なデータ | 復元元 | 永続化しない理由 |
+|---|---|---|
+| 所有仲間 | Players.initialCharacterId＋DRAW.characterId | 取得の事実との二重更新を避ける |
+| 習得済みスキル | マスター2の有効なS01〜S03 | 全種初期習得で、個別の習得操作がない |
+| 対戦結果 | ROUNDの双方の手＋skillId＋固定ルール | 勝敗・基本点・加算は決定的に再計算できる |
+| 累計スコア | 全ROUNDの得点合計 | ポイント消費がなく、独立した残高表が不要 |
+| version | 最終seq、0件は0 | 二重保存せず履歴に一致させる |
+| 選択中の仲間・スキル | ブラウザー内の画面状態 | ゲーム進行の正本ではない |
 
-## 排他・再送・保存の流れ
+初期状態はversion 0、points 0、所有C01、習得S01〜S03。最大200行を順に読み、記録済みの獲得仲間・CPUの手から各時点のresult/stateを復元する。この処理で乱数・外部AIを呼ばない。復元後のAPI状態は既存画面との契約を維持する。
 
-変更処理はScriptLockで直列化する。ロックは取得後に必ず解放する。[LockService公式資料](https://developers.google.com/apps-script/reference/lock/lock-service)。
-
-```text
-1. 入力の型・サイズ・操作名を検証する。
-2. ScriptLock.tryLock(3000) が失敗したら BUSY。
-3. ロック内でマスター、Players、Actionsを読み直し、全行の整合性を検証。
-4. masterVersion=2とdatasetIdを検証し、不一致では書込しない。requestIdが既存ならpayloadHashを比較する。
-   一致 → 保存済みresult/stateを返す（replayed=true）。
-   不一致 → REQUEST_ID_CONFLICT。
-5. 最新versionとexpectedVersionを比較。不一致ならVERSION_CONFLICT。
-6. 行動数200件以上ならOP_LIMIT。
-7. 所有・初期習得・適性・手などの業務条件を検証する。
-8. ここで初めて乱数を引き、結果と次状態を計算する。
-9. actionIdを採番し、必要な全列を1行のsetValuesで書き込む。
-10. SpreadsheetApp.flush()後に対象行を再読込し、内容を検証する。
-11. resultとstateを返す。finallyでロックを解放する。
+```json
+{"schemaVersion":1,"version":0,"points":0,"ownedCharacterIds":["C01"],"unlockedSkillIds":["S01","S02","S03"]}
 ```
 
-payloadHashは `{op,expectedVersion,datasetId,payload}` の安定したJSON表現に対するSHA-256。新規操作には材料配列が存在しない。クライアントが送るハッシュを信用しない。再送時は既存要求の検索をversion・件数上限より先に行う。
+上のstate.schemaVersion=1はAPIの状態表現の版であり、物理DBのSCHEMA_VERSION=2とは別物。bootstrap.data.storageSchemaVersion=2とmasterVersion=2を返す。ID配列は一意・昇順。最新10件も同じ復元結果を使う。基本6表の取得後の復元計算はメモリー内で行い、行ごとのSheets RPCやセリフRPCを追加しない。
 
-新規masterVersion=2の行動typeはDRAW / ROUNDのみ。旧SYNTHESISは版1の保管用検証だけで扱う。seqは最新version+1。Actionsは追記専用とし、ゲームコードから既存行を上書きしない。プレイヤーごとの連番に欠落・重複がないこと、requestId一意、JSON型、state.version、参照ID、非負ポイント、保存済み結果からの状態差分を検証する。
+## 保存・再送
 
-スクリプトロックはシートの人手編集を止めない。Sheetsは所有者以外に編集権限を付けず、デモ中の手編集をしない。
+1. 変更要求の型・許可項目・UUID・4096バイト以下を確認する。
+2. ScriptLock.tryLock(3000)を取得し、失敗ならBUSY。
+3. 接続先を読み直し、全マスター・全履歴を検証。物理2／マスター2以外のゲーム操作はLEGACY_DATA_READ_ONLY。
+4. 接続ブックのdatasetIdを照合。不一致ならDATASET_MISMATCH。
+5. 既存requestIdを検索。同一payloadHashなら当該操作直後のresult/stateを復元してreplayed=trueで返す。異なるならREQUEST_ID_CONFLICT。
+6. expectedVersion、200件上限、所有・適性を判定。順序は再送検索より後。
+7. 新規要求だけ乱数を引いて計算。計算結果と状態差分を検証し、15列の記録を作る。
+8. 追加後の全履歴をメモリー上で検証し、1行setValues→flush→対象行照合→全表再読込を行う。
+9. 成功結果を返す。例外時もfinallyでロックを解放する。
 
-### 再送と復元
+保存済み結果を再送で返す際は現在の最新状態とは限らないため、その後bootstrapで同期する。失敗・読取りではseqを増やさない。完全な保存行があれば応答喪失後も同じ要求で回収できる。不完全行の場合は停止する。
 
-- 新仕様では起動時にbootstrapでdatasetId/masterVersionを取得して当該ブックの保留要求を選別する。旧キーの要求を見つけても新ブックへ送信しない。
-- 送信前にrequestIdを `crypto.randomUUID()` 等で作り、要求全体をsessionStorageへ保持する。
-- 失敗時は同じID・同じ入力・同じexpectedVersionでのみ再送する。乱数や加算をやり直さない。
-- 成功確認後に保留要求を消す。再読込で保留があれば先に同じ要求を解決し、その後bootstrapを取得する。
-- replayed=trueのstateは当該操作直後の状態であり、現在の最新とは限らない。再送解決後はbootstrapで同期する。
-- タブを閉じて保留要求を失っても、次回bootstrapは保存済みの最新状態を返す。画面操作を自動再実行しない。
-- 結果表示中の再タップは新規要求を作らない。「もういちど」を押した次の対戦だけ新しいIDにする。
-- 書込み例外後、同一要求が完全な1行として存在すれば再送で回収。不完全行があればDATA_INTEGRITY_ERRORで停止する。
+ブラウザーは要求全体をsessionStorageへ保持する。masterVersionとdatasetIdで保存先を分け、別ブックへ旧要求を再送しない。タブ復帰・履歴復帰・手動更新ではneedsSyncを先に立て、取得失敗後は古い状態から変更しない。未解決要求を自動送信せず、手動再送で解決する。
 
-自動再試行は初版では行わず、子ども向け再試行ボタンを用意する。勝敗計算テストでは乱数関数を引数注入できる構造にするが、公開APIには乱数固定機能を置かない。
+## 管理画面のセリフデータ
 
-## 廃止する画像データと新しいセリフ管理
+ゲーム6表とは別に、管理者が明示初期化する任意の2表。両方がない場合は定型文で稼働する。片方欠落や不正値があれば管理処理を停止し、ゲーム向け読取りは空の採用集へフォールバックする。
 
-画像生成・登録・WebP配信・画像キャッシュは撤去する。Assets表とCharacters/Skills.assetIdはv1の既存記録・バックアップの互換性のため残し、新規ゲームの表示・保存・生成AIでは利用しない。新コードの画像参照は撤去済み。旧版1の検証だけが旧Assetsを扱う。8表の列順や既存Actionsを今回の設計だけで書き換えない。
+| 表 | 列 | 制約 |
+|---|---|---|
+| DialogueDrafts | slotKey, revision, textsJson, generationRequestId, updatedAt | PK slotKey。C01〜C03×WIN/LOSE/DRAWの9枠、固定順。revision非負整数。0は空配列と空の生成ID、1以上はUUIDと1〜3文 |
+| DialoguePublication | id, version, catalogJson, updatedAt | PK id=CURRENTの1行。versionはcatalog内と一致。版0は空集、以後最大9枠・各1〜3文 |
 
-AIセリフはActionsに混ぜない。任意の追加2表DialogueDrafts（9枠の下書き）とDialoguePublication（公開版・採用集JSONの1行）で管理する。bootstrapは採用済み集だけを返し、プレイ中の生成や更新を行わない。公開はロック内で版比較・1行保存・flush・再読込を行う。管理生成の予約・日次回数はScript Propertiesに保持し、外部生成中はロックを解放する。追加2表もバックアップ照合の対象にし、旧8表だけの復元では定型文で稼働する。詳細は[現行設計](specs/ai-battle-dialogue.md)。
-## 合成廃止に伴う版と旧記録の扱い
+文は日本語を含む40 Unicodeコードポイント以内・重複なし、HTML等の禁止文字を拒否する。JSONセルは8192バイト以下、日時はUTC。詳細な文面制約・管理認可は[AIセリフ設計](specs/ai-battle-dialogue.md)。
 
-- 状態JSON・8表の列は維持しschemaVersion=1、新規ゲームのmasterVersionは2。新規Skillsは3行、CharacterSkillsは6行、Recipes/Assetsは空で初期化する。
-- 旧masterVersion=1は4スキル・9適性・R01・SYNTHESIS・旧ハッシュ正規化を旧ルールで検証する。旧数値は当時のポイント残高であり、新しい累計スコアへ読み替えない。
-- 旧データへの新ゲーム書込をLEGACY_DATA_READ_ONLYで拒否する。旧ブックの検証・バックアップ・コピー復元は維持する。MASTER_VERSIONだけを書き換えて新仕様扱いにしない。
-- 新規版2ブックは別途の明示作成とし、接続先の切替前に旧ブックのバックアップと新規ブックの検証を行う。自動切替・履歴削除・過去のstateJsonやpayloadHashの修正は禁止。今回は文書変更のみで実データには触らない。
-- 旧端末の保留synthesizeは自動再送しない。表示上で停止し、提供者が旧記録と照合して保留を解決する。新ブックへ旧要求を再発行しない。保留保存キーはmasterVersionとブックに対応する非秘密のデータセット識別子で分ける。実Drive IDは画面に返さない。
-- 新仕様のAPIはS04・recipesを返さず、合成を受け付けない。旧記録の診断・復元は管理用の内部検証とし、ゲームに廃止機能を露出させない。
+ここでは下書き1枠・採用集全体をそれぞれ1行で保存するため、意図的に境界の明確なJSONを使う。文を複数行に分けて公開途中の集をゲームへ返す構造にはしない。公開はロック内の版比較・1行保存・flush・再読込。下書きはゲームへ配信しない。bootstrapで採用済み集を1回取得し、対戦中はブラウザー内で選ぶ。
 
-## スキーマ・マスター変更と復旧
+## 設定の保存先
 
-- 名前の変更でもIDは維持する。キャラ・基本スキルの追加は、参照、適性、確率表示、画像、受入条件を一緒に更新する。
-- マスター編集は提供者だけがデモ停止中に行う。変更前にSheetsをコピーし、検証後にMASTER_VERSIONを更新する。
-- schemaVersionとmasterVersionを各Actionsに記録する。破壊的変更や既存記録との互換性に関わる変更は移行手順と検証を先に設計する。初版に自動migration・自動修復はない。
-- 不完全行を見つけたら利用を停止し、現状コピーを保存してテスト用コピーで照合する。[リリース・復旧手順](08_release_runbook.md)に従い、過去行への黙った巻戻しやポイントの手修正をしない。
-- 所有・習得の正規化テーブルへの分離、複数プレイヤーは次段階。[アーキテクチャ](02_architecture.md)の拡張境界を参照する。
+| 保存先 | 内容 |
+|---|---|
+| Settings | MASTER_VERSION、MAX_ACTIONS、SCHEMA_VERSIONだけ |
+| Script Properties | JANKEN_SPREADSHEET_ID、JANKEN_PREVIOUS_SPREADSHEET_ID、GEMINI_API_KEY、GEMINI_TEXT_MODEL、JANKEN_AI_TEXT_ENABLED、JANKEN_ADMIN_EMAIL |
+| Script Propertiesの生成制御 | JANKEN_AI_DAILY（日次20試行・停止状態）、JANKEN_AI_JOB_UUID（最大200予約・入力ハッシュ・状態・日付・モデル・プロンプト版） |
+| ブラウザー | 表示状態・採用集キャッシュ・同じ要求の手動再送用情報。APIキーや実Drive IDは渡さない |
 
-## 関連タスク
+生成の予約・回数はGASプロジェクト全体の上限とし、DB切替・移行・復元で消去しない。外部生成はロック外で行い、同じUUIDで二度呼ばない。SheetsバックアップにはGASコード・Script Properties・旧画像ファイル本体は含まれない。
 
-[MVP実装計画](tasks/03_active/mvp-implementation.md)で初期データ・保存・再送の実装を追跡する。schema・設定・永続化方式の変更には目的、互換性、移行・復元、AC09〜AC13・AC21〜AC23への影響を記録する。
+## 旧形式と移行
 
-### ③の正規化・容量の実装詳細（旧masterVersion=1の履歴）
+| 物理スキーマ | マスター | 用途 |
+|---|---|---|
+| 1 | 1 | 合成ありの旧記録。旧ルールで読取り・コピー照合だけ。新ゲームへ自動変換しない |
+| 1 | 2 | 合成廃止後のJSON保存形式。読取り・コピー照合と、別ブックへの明示移行が可能 |
+| 2 | 2 | 現行ゲーム。新規保存・管理画面に使用 |
 
-inputJsonは `{op,expectedVersion,payload}`。合成材料をソートした後、オブジェクトキーを再帰的に辞書順へ整列したJSONをUTF-8でSHA-256化する。配列は材料の正規化以外は順序を保持し、requestIdはハッシュに含めない。UUIDの照合は大文字小文字を区別しない。要求はJSON.stringify後の4096バイト以下、各JSONセルは8192バイト以下で検証する（KB表記の実装値）。所有・習得ID配列は一意かつ整列済み。時刻はUTCのミリ秒付きISO文字列。
+旧8表のヘッダー・値・JSON・payloadHashは変えない。読取り互換コードをlegacy-schema.js / legacy.jsへ分離する。旧物理形式はマスター2であっても公開ゲーム・管理操作から拒否する。
 
-全行のseq、actionId/requestId一意、schema/master版、入力ハッシュ、結果と次状態の差分を毎回検証する。書込前にも全体を検証し、setValues→flush→対象行照合→全体再読込をロック内で行う。Sheetsの手編集との競合や原子的トランザクションを保証するものではない。
+`migrateLab_(sourceId)`／`operator migrate SOURCE_ID`は物理1・マスター2だけを対象とする。ロック内で元データと管理表を検証し、検証付きバックアップを作り、別の物理2ブックへ変換する。actionId・requestId・seq・入力ハッシュ・記録時刻・結果・状態・初期作成時刻・管理2表を維持する。新行のrecordHashを計算し、復元状態と全操作の入出力が元と一致し、元データが不変の場合だけ移行先IDを返す。成功しても接続先は切り替えない。途中失敗のコピーは未採用として残す。
 
-旧画像キャッシュの仕様は廃止。標準カードの表示に画像RPCや画像設定を必要としない。
+コピー・移行先のブックIDは変わるため、過去行のdatasetIdは記録当時の値を保持し、新規要求には新ブックのdatasetIdを用いる。切替前に旧ブックで保留要求を解決・照合する。古い要求を新しいIDで再発行しない。
 
-新規datasetIdはブックID文字列のcanonical JSONをSHA-256化した識別子。実IDを返さず、変更要求とinputJsonに含める。通常の初回成功は応答stateで表示を更新し、追加bootstrapを行わない。手動再送・replayed=true・競合時はbootstrapで最新化する。旧版1のハッシュにはdatasetIdを追加しない。
+マスター1からはゲームルールが異なるため、旧記録を保管したうえで`create`で新規ゲームを作成する。`activate NEW_ID OLD_ID`は想定接続先・新物理形式・非公開所有・管理表を確認し、旧ブックをバックアップしてから切り替える。自動移行・自動リセット・本番のその場上書きは行わない。[運用手順](08_release_runbook.md)に従う。
 
-### 画面復帰時の同期
+## 障害・拡張・検証
 
-タブ復帰・履歴復帰・手動再読込では同期開始時点でneedsSyncを立てる。取得に失敗したら旧状態からの新規変更を止め、読取りの手動再試行を案内する。未解決の保留要求は自動送信しない。手動再送成功時は最新stateと保存済み結果を分けて表示する。
+不完全行・キー重複・関連不整合・計算不能・ハッシュ不一致はDATA_INTEGRITY_ERROR。停止した現状をまず証跡コピーし、正常なバックアップを別ブックへ復元して照合する。200件到達時も別ブックの新規ゲームへ切り替え、履歴を削除して続行しない。
+
+1人・200件を超える場合はこの全履歴復元方式を再評価し、トランザクションを備えたDB、所有・習得・対戦の専用テーブル、適切な索引へ移行する。現段階で可変レシピ・画像・汎用設定・複数プレイヤーの表は追加しない。
+
+テストコードはヘッダー・型・PK/FK・並べ替え・記録ハッシュ・決定的復元・上限・再送・部分失敗・旧形式互換・非破壊移行に対応する。利用者の指示により今回は実行せず、[最終検証](tasks/03_active/mvp-release-verification.md)にまとめる。既存の46件PASSを本変更の検証結果として扱わない。

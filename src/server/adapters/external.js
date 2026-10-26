@@ -4,7 +4,7 @@ function createRepository_() {
     bootstrap() {
       const book = SpreadsheetApp.openById(repositorySettings_().spreadsheetId);
       const { data } = readSnapshot_(book);
-      if (data.masterVersion !== 2)
+      if (data.masterVersion !== 2 || data.storageSchemaVersion !== 2)
         throw new AppError_("LEGACY_DATA_READ_ONLY");
       data.datasetId = payloadHash_(book.getId());
       data.dialogueCatalog = readPublicDialogue_(book);
@@ -12,7 +12,7 @@ function createRepository_() {
     },
     getRelations() {
       const { data, actions } = readSnapshot_();
-      if (data.masterVersion !== 2)
+      if (data.masterVersion !== 2 || data.storageSchemaVersion !== 2)
         throw new AppError_("LEGACY_DATA_READ_ONLY");
       return {
         data: {

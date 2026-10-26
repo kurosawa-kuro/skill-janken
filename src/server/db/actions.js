@@ -58,11 +58,32 @@ function validateStoredTransition_(previous, input, result, state, tables) {
     throw Error();
 }
 
-function validateActions_(
-  tables,
-  initialState,
-  validateTransition = validateStoredTransition_,
-) {
+// Hash persisted facts, including the random outcome; this is an integrity checksum, not a signature.
+function actionRecordHash_(row) {
+  const { recordHash, ...facts } = row;
+  return payloadHash_(facts);
+}
+function createActionRow_(request, change) {
+  const input = normalizedInput_(request);
+  const row = {
+    actionId: Utilities.getUuid(),
+    playerId: "P001",
+    seq: input.expectedVersion + 1,
+    requestId: request.requestId.toLowerCase(),
+    payloadHash: payloadHash_(input),
+    type: actionType_(input.op),
+    datasetId: input.datasetId,
+    characterId: change.result.characterId,
+    skillId: input.op === "playRound" ? input.payload.skillId : "",
+    playerHand: input.op === "playRound" ? input.payload.hand : "",
+    cpuHand: input.op === "playRound" ? change.result.cpuHand : "",
+    createdAt: new Date().toISOString(),
+    schemaVersion: 2,
+    masterVersion: 2,
+  };
+  return { ...row, recordHash: actionRecordHash_(row) };
+}
+function validateActions_(tables, initialState) {
   try {
     if (tables.Actions.length > 200) throw Error();
     let state = initialState;
@@ -71,6 +92,7 @@ function validateActions_(
       requests = new Set(),
       actions = [];
     for (const row of tables.Actions) {
+      requireObjectKeys_(row, tableDefinitions_().Actions);
       if (
         !isUuid_(row.actionId) ||
         !isUuid_(row.requestId) ||
@@ -78,33 +100,53 @@ function validateActions_(
         requests.has(row.requestId.toLowerCase()) ||
         row.playerId !== "P001" ||
         row.seq !== state.version + 1 ||
-        row.schemaVersion !== 1 ||
-        row.masterVersion !== masterVersion_(tables) ||
-        !isUtcDate_(row.createdAt)
+        row.schemaVersion !== 2 ||
+        row.masterVersion !== 2 ||
+        !isUtcDate_(row.createdAt) ||
+        row.recordHash !== actionRecordHash_(row)
       )
         throw Error();
-      const input = parseCell_(row.inputJson),
-        result = parseCell_(row.resultJson),
-        next = parseCell_(row.stateJson);
-      const normalized = (
-        masterVersion_(tables) === 1 ? normalizedLegacyInput_ : normalizedInput_
-      )({
-        ...input,
+      let op, payload, stored;
+      if (row.type === "DRAW") {
+        if (row.skillId !== "" || row.playerHand !== "" || row.cpuHand !== "")
+          throw Error();
+        op = "drawCharacter";
+        payload = {};
+        stored = { characterId: row.characterId };
+      } else if (row.type === "ROUND") {
+        op = "playRound";
+        payload = {
+          characterId: row.characterId,
+          skillId: row.skillId,
+          hand: row.playerHand,
+        };
+        stored = { cpuHand: row.cpuHand };
+      } else throw Error();
+      const input = normalizedInput_({
+        op,
+        payload,
+        expectedVersion: state.version,
+        datasetId: row.datasetId,
         requestId: row.requestId,
       });
-      if (
-        input.expectedVersion !== state.version ||
-        canonicalJson_(input) !== canonicalJson_(normalized) ||
-        row.type !== actionType_(input.op) ||
-        row.payloadHash !== payloadHash_(input)
-      )
-        throw Error();
-      validateState_(next, row.seq);
-      validateTransition(state, input, result, next, tables);
+      if (row.payloadHash !== payloadHash_(input)) throw Error();
+      const change = produceGameChange_(
+        op,
+        JSON.parse(JSON.stringify(state)),
+        payload,
+        tables,
+        stored,
+      );
+      validateState_(change.state, row.seq);
       ids.add(row.actionId.toLowerCase());
       requests.add(row.requestId.toLowerCase());
-      actions.push({ ...row, input, result, state: next });
-      state = next;
+      actions.push({
+        ...row,
+        input,
+        result: change.result,
+        state: change.state,
+      });
+      state = change.state;
     }
     return { state, actions };
   } catch (_) {
@@ -113,18 +155,16 @@ function validateActions_(
 }
 
 // The producer is server-side only; public requests cannot choose outcomes.
-function commitAction_(
-  request,
-  produce,
-  book,
-  validateTransition = validateStoredTransition_,
-) {
+function commitAction_(request, produce, book) {
   const input = normalizedInput_(request),
     hash = payloadHash_(input);
   return withLock_(() => {
     book = book || SpreadsheetApp.openById(repositorySettings_().spreadsheetId);
-    const before = readSnapshot_(book, validateTransition);
-    if (before.data.masterVersion !== 2)
+    const before = readSnapshot_(book);
+    if (
+      before.data.storageSchemaVersion !== 2 ||
+      before.data.masterVersion !== 2
+    )
       throw new AppError_("LEGACY_DATA_READ_ONLY");
     if (request.datasetId !== payloadHash_(book.getId()))
       throw new AppError_("DATASET_MISMATCH");
@@ -148,35 +188,33 @@ function commitAction_(
       input.payload,
       before.tables,
     );
-    const row = {
-      actionId: Utilities.getUuid(),
-      playerId: "P001",
-      seq: before.data.state.version + 1,
-      requestId: request.requestId.toLowerCase(),
-      payloadHash: hash,
-      type: actionType_(input.op),
-      inputJson: jsonCell_(input),
-      resultJson: jsonCell_(change.result),
-      stateJson: jsonCell_(change.state),
-      createdAt: new Date().toISOString(),
-      schemaVersion: 1,
-      masterVersion: 2,
-    };
+    try {
+      validateStoredTransition_(
+        before.data.state,
+        input,
+        change.result,
+        change.state,
+        before.tables,
+      );
+    } catch (_) {
+      throw new AppError_("DATA_INTEGRITY_ERROR");
+    }
+    const row = createActionRow_(request, change);
     validateActions_(
       { ...before.tables, Actions: [...before.tables.Actions, row] },
-      JSON.parse(initialTables_().Players[0][2]),
-      validateTransition,
+      initialState_(before.tables),
     );
     requireWriteLock_();
+    const columns = tableDefinitions_().Actions;
     const range = book
       .getSheetByName("Actions")
-      .getRange(before.actions.length + 2, 1, 1, 12);
-    const values = tableDefinitions_().Actions.map((column) => row[column]);
+      .getRange(before.actions.length + 2, 1, 1, columns.length);
+    const values = columns.map((column) => row[column]);
     range.setValues([values]);
     SpreadsheetApp.flush();
     if (canonicalJson_(range.getValues()[0]) !== canonicalJson_(values))
       throw new AppError_("DATA_INTEGRITY_ERROR");
-    const after = readSnapshot_(book, validateTransition);
+    const after = readSnapshot_(book);
     if (
       after.actions.length !== before.actions.length + 1 ||
       after.actions.at(-1).requestId !== row.requestId

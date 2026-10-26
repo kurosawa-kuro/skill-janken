@@ -25,6 +25,7 @@ export const RUNTIME_FILES = [
   "server/services/dialogue.js",
   "server/controllers/dialogue-admin.js",
   "server/db/legacy.js",
+  "server/db/legacy-schema.js",
   "server/controllers/admin.js",
   "client/index.html",
   "client/styles.html",

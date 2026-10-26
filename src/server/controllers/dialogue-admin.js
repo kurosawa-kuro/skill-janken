@@ -25,7 +25,10 @@ function adminApi(request) {
     requireObjectKeys_(p, keys[request.op]);
     const book = SpreadsheetApp.openById(repositorySettings_().spreadsheetId),
       snapshot = readSnapshot_(book);
-    if (snapshot.data.masterVersion !== 2)
+    if (
+      snapshot.data.masterVersion !== 2 ||
+      snapshot.data.storageSchemaVersion !== 2
+    )
       throw new AppError_("LEGACY_DATA_READ_ONLY");
     const datasetId = payloadHash_(book.getId());
     if (request.op !== "list" && p.datasetId !== datasetId)

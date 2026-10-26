@@ -6,7 +6,7 @@
 
 ## 現在の開発環境
 
-2026-10-26：合成・画像機能を撤去し、3スキル・6適性のゲーム4画面、保存・再送、学習表示、管理画面でのAIセリフ事前生成・採用をローカル実装済み。npm run check（46テスト・30実行ファイルのビルド・360px幅Chromium）が成功。実GASは従来のWeb v2のまま。新ブックへの切替・新コード配置・Gemini実生成・実機と別アカウントの確認は未完了。
+2026-10-26：ゲーム基本機能と管理画面のAIセリフ事前生成はローカル実装済み。続いてDBを物理スキーマ2（ゲーム6表・型付きActions）へ再設計し、旧形式の読取りと非破壊移行を実装した。最新変更は未検証・実GAS未反映。46件PASSは5b6bb44時点の過去記録であり、最新変更の合格を示さない。
 
 Node.js 22以上を用意し、プロジェクトルートで実行する。検証環境はWindows・Node.js v24.21.0・npm 11.19.0。依存バージョンはpackage-lock.jsonで固定する。
 
@@ -21,7 +21,7 @@ Chromiumが既に導入済みならブラウザのインストールは不要。
 | コマンド | 実行内容 |
 |---|---|
 | npm test | Nodeの46テスト。GASモック・API・画面通信・構造 |
-| npm run build | srcの30実行ファイルと.claspignoreをdistへ出力。転送・デプロイしない |
+| npm run build | srcの31実行ファイルと.claspignoreをdistへ出力。転送・デプロイしない |
 | npm run test:browser | build後にChromiumで360px幅・読込・通信失敗・キーボード再試行を確認 |
 | npm run check | format:check → test → build → test:browser |
 | npm run preview | 127.0.0.1:4173で仮データのゲーム4画面と管理画面を表示。Ctrl+Cで終了 |
@@ -39,7 +39,7 @@ Makefileは上記npmコマンドのラッパーへ更新した。Windowsではnp
 
 | Script Property | 用途 |
 |---|---|
-| JANKEN_SPREADSHEET_ID | ゲーム8表と任意のセリフ管理2表を置くブック |
+| JANKEN_SPREADSHEET_ID | ゲーム6表と任意のセリフ管理2表を置くブック |
 | JANKEN_DRIVE_FOLDER_ID | 廃止。新コードは参照しない |
 | GEMINI_API_KEY | 管理画面で事前生成する場合のみ必要。既存値を表示・コピーしない |
 | GEMINI_IMAGE_MODEL | 廃止。GEMINI_TEXT_MODELへコード上で流用しない |
@@ -53,13 +53,13 @@ Makefileは上記npmコマンドのラッパーへ更新した。Windowsではnp
 
 1. [索引](00_index.md)、[要件](01_requirements.md)、[MVP実装計画](tasks/03_active/mvp-implementation.md)を読む。今回のGoal / Scope / Doneと対象ACを決める。
 2. 提供者のGoogleアカウントでGASとSheetsを準備する。画像フォルダーは新仕様では不要。試験用データはデモ用と分ける。新setupは画像フォルダーを要求しない。
-3. [データモデル](05_data_model.md)に沿ってScript Propertiesとゲーム8シートを準備し、管理者がセリフ用2表を追加初期化する。キーや内部IDをブラウザへ渡さない。
+3. [データモデル](05_data_model.md)に沿ってScript Propertiesとゲーム6シートを準備し、管理者がセリフ用2表を追加初期化する。キーや内部IDをブラウザへ渡さない。
 4. GASの初回認可・本人限定アクセスは[リリース手順](08_release_runbook.md)に従い確認する。
 5. マスター検証、純粋関数の単体確認、GAS結合確認の実行方法を整備する。環境がない試験は未実施と記録する。
 
 ## 実装順と確認単位
 
-1. マスターの初期化と検証を作る。新規masterVersion=2のSkillsが3行、CharacterSkillsが6行、Recipesが空、初期状態が仕様と一致することを確認する。
+1. マスターの初期化と検証を作る。新規masterVersion=2のSkillsが3行、CharacterSkillsが6行、Recipes/Assets/assetIdが存在せず、物理スキーマ2、初期状態が仕様と一致することを確認する。
 2. Rulesの勝敗9組とスキル加算9組、旧合成APIとS04の拒否を確認する。
 3. 変更処理を1行追記でつなぎ、同一requestId再送・競合・応答喪失を確認する。
 4. 4画面をつなぎ、保存後に演出する。
@@ -90,7 +90,7 @@ Makefileは上記npmコマンドのラッパーへ更新した。Windowsではnp
 
 実装後、試験用コピーの管理画面で仲間と想定勝敗を選び事前生成する。下書き確認→採用→公開→ゲーム再読込の順を検証する。管理要求の重複防止、日次20試行、429で当日停止、自動再試行なしを確認する。
 
-プレイ中は採用済み文または定型文を即表示し、生成もセリフ取得も行わない。管理者設定・任意の管理2表・旧8表の復元互換性は[設計](specs/ai-battle-dialogue.md)に従う。新管理画面はローカル実装・模擬疎通済み。実生成は未確認。
+プレイ中は採用済み文または定型文を即表示し、生成もセリフ取得も行わない。管理者設定・任意の管理2表・旧物理1の読取り・移行互換性は[設計](specs/ai-battle-dialogue.md)に従う。新管理画面はローカル実装・模擬疎通済み。実生成は未確認。
 ## 日々の作業と検証記録
 
 1. [タスク一覧](tasks/README.md)から作業を選び、Scope / Plan / Acceptance Criteriaを明記する。中規模以上の実装は責務・IF・テスト方針を先に固定する。
@@ -114,3 +114,7 @@ Makefileは上記npmコマンドのラッパーへ更新した。Windowsではnp
 `node scripts/operator.mjs configure EMAIL true` は、GASエディタの実利用者メールとEMAILが一致する場合だけ管理者・テキストモデル・生成有効化を設定するエディタ専用ビルドを作る。`false` で生成を無効化できる。GEMINI_API_KEYは既存値を保持し、返却・ログ出力・引数での受渡しをしない。trueへの変更は既存キーがある場合だけ。生成予約・日次カウントは削除しない。このコマンドの作成や設定自体でGeminiへ接続・生成しない。
 
 2026-10-26の追加実装は整形だけを行い、利用者指示によりテスト・build・ブラウザー・実GAS検証を実行していない。最終検証は実装完了後にまとめる。
+
+### 物理スキーマ2の作成・移行コマンド
+
+`create`は新しい6表の空ゲームを作り、接続先を変えない。旧物理1・マスター2の進行を引き継ぐ場合は `node scripts/operator.mjs migrate SOURCE_ID` を使う。バックアップ後に別ブックへ変換し、旧履歴・進行・管理2表の一致を照合する。成功後も `activate NEW_ID OLD_ID` は別操作。旧マスター1の合成履歴は移行せず保管する。手順・復旧条件は[08](08_release_runbook.md)を参照。現時点ではこれらの新処理を実行していない。

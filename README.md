@@ -1,10 +1,10 @@
 # スキルじゃんけんラボ
 
-2026-10-26追補：利用者の指示に従い、実装を先に完了させ、検証は最後にまとめる。ゲームの下部固定ナビ・スキル図形・フォーカス復帰・手動再送結果表示・画面復帰時の状態更新、管理生成の状態表示・読込失敗時の変更停止、エディタ専用設定コマンドまで実装済み。現行MVPのコード実装残件は0。今回の追補は未検証。既存46テストのPASSは追補前の5b6bb44までの記録であり、最新変更の合格を示さない。実環境の反映も未実施。
+2026-10-26追補：利用者の指示に従い、検証は最後にまとめる。基本機能の追加修正に続き、DBを物理スキーマ2へ再設計した。ソース・設計書・テストコードの更新は実施済み、検証実行・実DB移行・配置は未実施。
 
 仲間を集め、基本スキルを選んでCPUとじゃんけんし、累計スコアを伸ばす教育用Webアプリです。遊びの記録と仲間・スキルの対応表で、データの「1対多」「多対多」を学びます。
 
-2026-10-26：合成・画像機能を撤去し、3スキル・6適性のゲーム4画面、保存・再送、学習表示、管理画面でのAIセリフ事前生成・採用をローカル実装済み。npm run check（46テスト・30実行ファイルのビルド・360px幅Chromium）が成功。実GASは従来のWeb v2のまま。新ブックへの切替・新コード配置・Gemini実生成・実機と別アカウントの確認は未完了。 詳細は[実装・検証記録](docs/tasks/03_active/mvp-release-verification.md)。
+2026-10-26：ゲーム基本機能と管理画面のAIセリフ事前生成はローカル実装済み。続いてDBを物理スキーマ2（ゲーム6表・型付きActions）へ再設計し、旧形式の読取りと非破壊移行を実装した。最新変更は未検証・実GAS未反映。46件PASSは5b6bb44時点の過去記録であり、最新変更の合格を示さない。 詳細は[実装・検証記録](docs/tasks/03_active/mvp-release-verification.md)。
 
 ## 初版の体験と範囲
 
@@ -51,13 +51,13 @@
 |---|---|
 | Google Apps Script（GAS / JavaScript） | HTML Serviceによる画面配信、入力検証、勝敗・ポイント計算、保存 |
 | HTML / CSS / JavaScript | スマホ向け4画面、カード、結果表示、学習画面 |
-| Google Sheets | 8シートのマスター・初期状態・行動記録 |
+| Google Sheets | ゲーム6表と任意のセリフ管理2表 |
 | Google Drive | Sheetsの非公開確認・バックアップ。画像フォルダーは新仕様では不要 |
 | Gemini | 管理画面でキャラ×勝敗の短文を事前生成。プレイ中の生成・画像生成はしない |
 
 画面はdoGetが配信し、ゲームapiはbootstrap・drawCharacter・playRound・getRelationsの4操作。bootstrapに採用済みセリフ集を同梱し、対戦後はブラウザ内で選んで表示します。管理画面とadminApiは別に設け、サーバーで管理者を検証します。旧getAssetとgetBattleLine案は廃止。ローカル実装済みです。
 
-Sheetsには `Players`、`Characters`、`Skills`、`CharacterSkills`、`Recipes`、`Assets`、`Actions`、`Settings` を置きます。成功した変更ごとに入力・結果・次状態をActionsへ1行追記し、最新行の `stateJson` を現在状態とします。行が0件のときだけPlayersの初期状態を使い、現在状態を別表へ二重保存しません。
+Sheetsには `Players`、`Characters`、`Skills`、`CharacterSkills`、`Actions`、`Settings` の6表を置きます。Actionsには入力・抽選結果を15列で1行追記し、初期所有と履歴から現在状態を復元します。画像・合成の表と重複する状態JSONは新形式から除去しました。旧形式は読取り専用で保管し、マスター2の履歴は別ブックへ明示移行できます。[DB設計](docs/05_data_model.md)と[作業記録](docs/tasks/03_active/database-redesign.md)を参照してください。
 
 `ScriptLock`、`requestId`、`expectedVersion` で排他・再送・競合を扱います。同じ要求の再送は保存済みの結果を返し、抽選・加減算を繰り返しません。不完全行や参照不整合では変更を止め、自動で初期化しません。SheetsにDB同等のトランザクションを保証させる設計ではありません。
 
@@ -72,7 +72,7 @@ npm run check
 npm run preview
 ```
 
-Chromiumが導入済みならインストールは不要です。プレビューは `http://127.0.0.1:4173/` の仮データ表示で、Ctrl+Cで終了します。`npm run check` は整形確認・46件のローカルテスト・ビルド・ブラウザ確認を行います。`npm run build` の出力はdistで、アップロードやデプロイはしません。Makefileはnpmのラッパーです。
+Chromiumが導入済みならインストールは不要です。プレビューは `http://127.0.0.1:4173/` の仮データ表示で、Ctrl+Cで終了します。`npm run check` は整形確認・ローカルテスト・ビルド・ブラウザ確認を行います。`npm run build` の出力はdistで、アップロードやデプロイはしません。Makefileはnpmのラッパーです。
 
 ローカルでゲームを試すにはプレビューを開きます。管理画面は `/?view=admin`。実環境の残作業は[配置・受入](docs/tasks/03_active/mvp-release-verification.md)を参照。
 
@@ -142,7 +142,7 @@ Chromiumが導入済みならインストールは不要です。プレビュー
 | [AGENTS.md](AGENTS.md) / [CLAUDE.md](CLAUDE.md) | 実装時に守る共通方針・ツール別の作業手順 |
 | [docs/00_index.md](docs/00_index.md) | 反映済み製品文書の入口・更新規約・権威順位 |
 | [要件・画面](docs/01_requirements.md) / [ドメイン](docs/03_domain_model.md) | 対象・MVP範囲・ゲームルール・学習体験 |
-| [構成・API](docs/02_architecture.md) / [データモデル](docs/05_data_model.md) | ファイル責務・8シート・保存・再送 |
+| [構成・API](docs/02_architecture.md) / [データモデル](docs/05_data_model.md) | ファイル責務・ゲーム6表・保存・再送 |
 | [開発手順](docs/04_workflows.md) / [エラー](docs/06_error_policy.md) | 実装順・AI連携・障害時の扱い |
 | [テスト戦略](docs/07_test_strategy.md) / [リリース手順](docs/08_release_runbook.md) | AC01〜AC26の記録先・本人限定公開・復旧 |
 | [反映対応表](docs/09_source_traceability.md) | 元文書全31章と反映先・監査結果 |

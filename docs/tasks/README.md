@@ -4,6 +4,8 @@
 
 確定した仕様は `docs/specs/`、判断は `docs/adr/`、繰り返す運用は `docs/runbooks/`、再利用する作業手順は `.claude/skills/` に置く。
 
+現在の追加作業：[DB再設計](03_active/database-redesign.md)。実装済み、検証・実DB移行は[最終検証](03_active/mvp-release-verification.md)へ集約する。
+
 ## 日次運用
 
 1. 作業開始時に `03_active/`（と収束待ちの `04_verifying/`）を見る。

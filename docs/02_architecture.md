@@ -25,7 +25,7 @@ flowchart LR
     AI --> M
     M -->|下書き・確認・公開| D[セリフ管理表]
     B[ゲーム画面] -->|bootstrap 一括取得| G[GAS api]
-    G --> S[ゲーム8表・Actions]
+    G --> S[ゲーム6表・Actions]
     D -->|採用済み集だけ| G
     B -->|playRound 保存| G
     G -->|確定結果| B
@@ -46,16 +46,16 @@ flowchart LR
 | controllers/dialogue-admin.js・core/access.js | 管理APIと実利用者の認可、非公開所有確認 |
 | application/services.js・services/game.js | 抽選・勝敗・加算と保存の配線 |
 | adapters/external.js | bootstrap・関係情報・採用集の読取 |
-| db/schema.js・repository.js・actions.js | 新マスター版2・全行検証・追記・再送・上限 |
-| db/legacy.js | 旧版1の保管・バックアップ用検証。旧操作を公開しない |
-| controllers/admin.js・backup.js | 新規ブック作成、検証付きバックアップ・切替 |
+| db/schema.js・repository.js・actions.js | 物理2／マスター2・型付き記録・状態復元・追記・再送・上限 |
+| db/legacy.js・legacy-schema.js | 旧物理1（マスター1・2）の読取り・バックアップ用検証。旧操作を公開しない |
+| controllers/admin.js・backup.js | 新規ブック作成、旧マスター2の別ブック移行、検証付きバックアップ・切替 |
 | services/dialogue.js・gemini.js | 下書き・公開版・生成予約・回数制限・テキストAPI |
 | client/index.html・app.html・styles.html | ゲーム4画面、結果、学習表示 |
 | client/core/pending.html・dialogue.html | データセット別保留、手動再送、セリフのローカル選択 |
 | client/admin.html・admin-app.html | 候補生成・確認・選択・公開・解除 |
 | scripts/・tests/ | 配布しない開発・検証コード |
 
-公開関数はdoGet・api・adminApiのみ。内部は末尾 `_`。管理入口はすべて実利用者認可を行う。GASは同じ大域で実行し、トップレベルの初期化順に依存しない。buildは30実行ファイルと.claspignoreをdistへ出力するだけで、デプロイしない。
+公開関数はdoGet・api・adminApiのみ。内部は末尾 `_`。管理入口はすべて実利用者認可を行う。GASは同じ大域で実行し、トップレベルの初期化順に依存しない。buildは31実行ファイルと.claspignoreをdistへ出力するだけで、デプロイしない。
 
 ## Golden Pathと構成要素
 
@@ -166,9 +166,9 @@ flowchart LR
 
 dialogueCatalogは公開版と採用済み9枠の短文集。下書き・秘密情報は含めず、セリフ側の欠落・不整合は空集で定型文へ切り替える。getBattleLine案は廃止。管理画面・adminApiの認可と保存契約は[現行設計](specs/ai-battle-dialogue.md)に従い、ゲームapiから管理操作を呼べないようにする。
 
-bootstrapのplayerは `{playerId, displayName}`。charactersは `{characterId,name,assetId}`、skillsは `{skillId,name,effectCode,bonus,assetId}`、characterSkillsは `{characterId,skillId}` の配列。limitsは `{maxActions:200,remainingActions:n}`。新規masterVersionは2。datasetIdはサーバーで接続ブックIDをSHA-256化した非秘密の識別子とし、元のDrive IDは返さない。コピー先は別IDになる。保留要求の保存先をmasterVersionとdatasetIdで分離し、別ブックへ旧要求を送らない。
+bootstrapのplayerは `{playerId, displayName}`。charactersは `{characterId,name}`、skillsは `{skillId,name,effectCode,bonus}`、characterSkillsは `{characterId,skillId}` の配列。limitsは `{maxActions:200,remainingActions:n}`。新規masterVersionは2、storageSchemaVersionは2。state.schemaVersion=1はAPI表現の版であり、物理スキーマとは区別する。datasetIdはサーバーで接続ブックIDをSHA-256化した非秘密の識別子とし、元のDrive IDは返さない。コピー先は別IDになる。保留要求の保存先をmasterVersionとdatasetIdで分離し、別ブックへ旧要求を送らない。
 
-recentActionsは `{actionId,type,createdAt,result}` の配列で新しい順。payloadHashや入力の内部記録は返さない。getRelationsのversionは対応する状態のversion。Assetsは既存データ互換用に残すレガシー表となり、ゲームは参照しない。
+recentActionsは `{actionId,type,createdAt,result}` の配列で新しい順。payloadHashや入力の内部記録は返さない。getRelationsのversionは対応する状態のversion。新形式にAssets・Recipes・assetIdは存在しない。旧8表は読取り専用の別経路で扱う。
 
 playerIdはクライアントから受け取らず、初版サーバー内でP001と決める。未知のop、未知のキー、必要項目不足を拒否する。変更要求全体は4KB以下、IDは英数字・`_`・`-`の32文字以内、requestIdはUUID形式に限定する。
 
@@ -177,7 +177,7 @@ playerIdはクライアントから受け取らず、初版サーバー内でP00
 ## 保存・実行境界
 
 - 状態変更は `drawCharacter` / `playRound` の2操作。画面は1件ずつ送信し、成功保存を確認してから結果を演出する。
-- 8シート、1行追記、ScriptLock、再送と状態復元の詳細は[データモデル](05_data_model.md)。Sheetsの複数表更新をDBトランザクションとみなさない。
+- ゲーム6表、1行追記、ScriptLock、再送と状態復元の詳細は[データモデル](05_data_model.md)。Sheetsの複数表更新をDBトランザクションとみなさない。
 - 認可は提供者本人限定の公開設定を前提とする。公開APIに任意playerId・Drive fileId・シート名・URLを指定する機能を作らない。内部関数の末尾 `_` は認可・入力検証の代替ではない。
 - キャッシュは補助のみ。最新状態・重複判定の正本はSheetsとする。文字列はtextContent等で表示し、任意HTML・コードを実行しない。
 - GASの実行時設定はScript Properties。`env/` と `doppler.yaml` は既存の開発用ひな形で、GASへの同期は未実装。設定と秘密情報の置き場所は[データモデル](05_data_model.md)に従う。

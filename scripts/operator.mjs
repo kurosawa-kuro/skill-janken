@@ -46,6 +46,9 @@ if (
   ["true", "false"].includes(expectedId)
 )
   expression = `configureDialogue_(${JSON.stringify(backupId)}, ${expectedId})`;
+if (operation === "migrate" && /^[A-Za-z0-9_-]+$/.test(backupId || "")) {
+  expression = `migrateLab_(${JSON.stringify(backupId)})`;
+}
 if (operation === "restore" && /^[A-Za-z0-9_-]+$/.test(backupId || "")) {
   expression = `restoreBackupToCopy_(${JSON.stringify(backupId)})`;
 }
@@ -57,10 +60,12 @@ if (
   expression = `activateLab_(${JSON.stringify(backupId)}, ${JSON.stringify(expectedId)})`;
 if (!expression || !connection.scriptId || connection.rootDir !== "dist")
   throw new Error(
-    "Usage: node scripts/operator.mjs setup|create|backup|verify|restore BACKUP_ID|activate NEW_ID OLD_ID|configure EMAIL true|false (ordinary connection must target dist)",
+    "Usage: node scripts/operator.mjs setup|create|backup|verify|migrate SOURCE_ID|restore BACKUP_ID|activate NEW_ID OLD_ID|configure EMAIL true|false (ordinary connection must target dist)",
   );
 if (
-  ["backup", "restore", "create", "activate", "configure"].includes(operation)
+  ["backup", "restore", "create", "activate", "configure", "migrate"].includes(
+    operation,
+  )
 ) {
   expression = `(() => { const result = ${expression}; console.log(JSON.stringify(result)); return result; })()`;
 }

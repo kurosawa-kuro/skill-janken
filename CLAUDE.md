@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-2026-10-26追補：利用者の指示に従い、実装を先に完了させ、検証は最後にまとめる。ゲームの下部固定ナビ・スキル図形・フォーカス復帰・手動再送結果表示・画面復帰時の状態更新、管理生成の状態表示・読込失敗時の変更停止、エディタ専用設定コマンドまで実装済み。現行MVPのコード実装残件は0。今回の追補は未検証。既存46テストのPASSは追補前の5b6bb44までの記録であり、最新変更の合格を示さない。実環境の反映も未実施。
+2026-10-26追補：利用者の指示に従い、検証は最後にまとめる。基本機能の追加修正に続き、DBを物理スキーマ2へ再設計した。ソース・設計書・テストコードの更新は実施済み、検証実行・実DB移行・配置は未実施。
 
 このファイルは Claude Code がこのリポジトリで作業する際の最小ガイド。
 
@@ -8,7 +8,7 @@
 
 **スキルじゃんけんラボ**は、仲間集め・スキル選択・CPUじゃんけんから、1対多・多対多のデータのつながりを学ぶWebアプリ。GAS / HTML Service / JavaScript / Sheets / Driveを使い、Geminiは管理画面でのセリフ事前生成にだけ使う。画像生成は廃止し、画像なしのカード表示を標準にする。
 
-2026-10-26：合成・画像機能を撤去し、3スキル・6適性のゲーム4画面、保存・再送、学習表示、管理画面でのAIセリフ事前生成・採用をローカル実装済み。npm run check（46テスト・30実行ファイルのビルド・360px幅Chromium）が成功。実GASは従来のWeb v2のまま。新ブックへの切替・新コード配置・Gemini実生成・実機と別アカウントの確認は未完了。 [最新記録](docs/tasks/03_active/mvp-release-verification.md)を参照。
+2026-10-26：ゲーム基本機能と管理画面のAIセリフ事前生成はローカル実装済み。続いてDBを物理スキーマ2（ゲーム6表・型付きActions）へ再設計し、旧形式の読取りと非破壊移行を実装した。最新変更は未検証・実GAS未反映。46件PASSは5b6bb44時点の過去記録であり、最新変更の合格を示さない。 [最新記録](docs/tasks/03_active/mvp-release-verification.md)を参照。
 
 ## Source of Truth
 
@@ -29,13 +29,13 @@
 
 ## コマンド
 
-Node.js 22以上。ルートで `npm ci`、必要なら `npx playwright install chromium`、`npm run check`。checkは整形確認・46件のNodeテスト・ビルド・Chromium確認を行う。`npm run preview` は127.0.0.1:4173の仮データ表示。Makefileはnpmのラッパー。`npm run build` は許可リストの30実行ファイルと.claspignoreをdistへ出力するだけで、実配置は行わない。
+Node.js 22以上。ルートで `npm ci`、必要なら `npx playwright install chromium`、`npm run check`。checkは整形確認・Nodeテスト・ビルド・Chromium確認を行う。`npm run preview` は127.0.0.1:4173の仮データ表示。Makefileはnpmのラッパー。`npm run build` は許可リストの31実行ファイルと.claspignoreをdistへ出力するだけで、実配置は行わない。
 
 ## アーキテクチャ
 
 - GASソースは `src/server/` の通常JS、画面は `src/client/`。controllers・core・application・adaptersに分け、ゲーム固有のRulesはservices/game.js。保存はdb/actions.jsのcommitAction_へ状態遷移を注入する。実配置用のアダプターは未接続時にエラーとなり、仮データへ自動切替しない。Nodeのscripts/testsはES modulesで、配布物に含めない。
 - `doGet()` でHTMLを配信し、画面通信は `google.script.run` → `api(request)`。独立RESTサーバーは設けず、内部関数は末尾 `_`、管理画面の公開入口は認可付き `adminApi` とする。
-- Sheetsは `Players` / `Characters` / `Skills` / `CharacterSkills` / `Recipes` / `Assets` / `Actions` / `Settings` の8シート。状態は最新Actions行の `stateJson`、0件時のみPlayersの初期JSONを使う。
+- SheetsはPlayers / Characters / Skills / CharacterSkills / Actions / Settingsのゲーム6表と任意の管理2表。物理スキーマ2、マスター2。初期所有と最大200件の型付きActionsから現在状態を復元し、重複する状態JSONを保存しない。旧物理1は読取り専用で、マスター2だけ別ブックへ明示移行する。
 - GAS実行時のAPIキー・テキストモデルID・AI有効化設定・Spreadsheet IDはScript Propertiesで管理する。`env/` / `doppler.yaml` は既存の開発用ひな形であり、GASへの同期を前提にしない。秘密情報をコミット・画面配信・ログ出力しない。
 - 設計・運用ドキュメントは `docs/` 配下。権威順位と更新規約は `docs/00_index.md` に従う。
 - パス別ルールは `.claude/rules/` 配下に置く。
@@ -44,7 +44,7 @@ Node.js 22以上。ルートで `npm ci`、必要なら `npx playwright install 
 ## 実装時の重点
 
 - 初期状態はC01・S01〜S03・0ポイント・version 0。基本3種は初期習得、適性6行固定。スキルは勝敗を変えず条件一致で+1。合成・S04・R01・消費は廃止し、pointsは累計スコア。旧保存データを自動変換しない。
-- 変更処理は `ScriptLock` 内で検証し、入力・結果・次状態をActionsへ1行追記、flush後に再読込確認する。同じ `requestId` の照合はversion・200件上限の判定より先。再送で乱数・加減算を繰り返さない。
+- 変更処理は `ScriptLock` 内で検証し、入力・抽選結果を型付き15列のActionsへ1行追記、flush後に再読込確認する。同じ `requestId` の照合はversion・200件上限の判定より先。再送で乱数・加減算を繰り返さない。
 - 保留要求は同じID・入力・`expectedVersion` で手動再送し、解決後にbootstrapで最新化する。不整合時は停止し、自動初期化しない。
 - 提供者本人限定の公開とし、任意playerId・Drive fileIdをAPIで受け付けない。所有・習得・適性・勝敗・ポイントはサーバー側で検証・計算する。
 - 画像生成・画像登録・getAsset配信は廃止。図形・名前・効果文で3体と3スキルを表す。AIは提供者用管理画面で事前生成・確認・採用する。ゲームはbootstrapで採用集を読み込み、保存結果からローカル選択する。プレイ中の生成・セリフ専用RPCは禁止。詳細は[再設計](docs/specs/ai-battle-dialogue.md)。ローカル実装済み・実環境未反映。

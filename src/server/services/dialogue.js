@@ -45,7 +45,8 @@ function validateCatalog_(catalog) {
     !Number.isSafeInteger(catalog.version) ||
     catalog.version < 0 ||
     !Array.isArray(catalog.entries) ||
-    catalog.entries.length > 9
+    catalog.entries.length > 9 ||
+    (catalog.version === 0 && catalog.entries.length !== 0)
   )
     throw new AppError_("DATA_INTEGRITY_ERROR");
   const slots = new Set();
@@ -70,7 +71,10 @@ function dialogueRaw_(book) {
       continue;
     }
     const rows = sheet.getDataRange().getValues();
-    if (canonicalJson_(rows[0]) !== canonicalJson_(columns))
+    if (
+      canonicalJson_(rows[0]) !== canonicalJson_(columns) ||
+      rows.some((row) => row.length !== columns.length)
+    )
       throw new AppError_("DATA_INTEGRITY_ERROR");
     raw[name] = rows;
   }
@@ -95,12 +99,21 @@ function readDialogue_(book) {
       !Number.isSafeInteger(r[1]) ||
       r[1] < 0 ||
       typeof r[2] !== "string" ||
+      Utilities.newBlob(r[2]).getBytes().length > 8192 ||
       !isUtcDate_(r[4]) ||
-      (r[1] > 0 && !isUuid_(r[3]))
+      (r[1] === 0 ? r[3] !== "" : !isUuid_(r[3]))
     )
       throw new AppError_("DATA_INTEGRITY_ERROR");
-    const texts = JSON.parse(r[2]);
-    validateTexts_(texts, true);
+    let texts;
+    try {
+      texts = JSON.parse(r[2]);
+    } catch (_) {
+      throw new AppError_("DATA_INTEGRITY_ERROR");
+    }
+    jsonCell_(texts);
+    validateTexts_(texts, r[1] === 0);
+    if (r[1] === 0 && texts.length !== 0)
+      throw new AppError_("DATA_INTEGRITY_ERROR");
     return { slotKey: r[0], revision: r[1], texts };
   });
   const pub = raw.DialoguePublication;
