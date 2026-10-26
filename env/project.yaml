@@ -1,0 +1,9 @@
+# Project path/name source of truth.
+#
+# Edit this file after moving or renaming the project, then run:
+#   make render-project-config
+
+projectName: skill-janken
+repoRoot: C:\Users\owner\.ssh\dev\skill-janken
+workspaceRoot: C:\Users\owner\.ssh\dev
+homeDir: C:\Users\owner

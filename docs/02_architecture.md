@@ -1,0 +1,194 @@
+# 02 アーキテクチャ — スキルじゃんけんラボ
+
+反映日：2026年10月26日。初期資料（退避済み）：[01_企画書.md](archive/スキルじゃんけんラボ_企画・仕様・設計/01_企画書.md)・[02_仕様書.md](archive/スキルじゃんけんラボ_企画・仕様・設計/02_仕様書.md)・[03_設計基礎書.md](archive/スキルじゃんけんラボ_企画・仕様・設計/03_設計基礎書.md)（v1.0）。
+
+本書は提案仕様をプロジェクト用に整理した設計文書。アプリ実装・受入試験・公開は未完了であり、実績や試験合格を示さない。参照元と本書の役割・更新規約は[索引](00_index.md)を参照。
+
+## 技術の役割
+
+| 技術 | 初版での役割 |
+|---|---|
+| Google Apps Script（GAS） | 画面配信、入力検証、勝敗・ポイント計算、保存、画像取得 |
+| Google Sheets | キャラ・スキル・対応表・レシピ・行動記録の保存と教材用の可視化 |
+| Google Drive | 生成元画像・採用WebP画像・バックアップの保管。一般公開しない |
+| Gemini | 提供者がキャラとスキルの絵を事前生成する。対戦ロジックには使わない |
+| HTML/CSS/JavaScript | 縦画面、カード、ボタン、短い演出、学習表示 |
+
+モデル名や料金は変更されるため、実装時に利用可能な画像生成対応モデルを確認する。画像生成とWebP変換は別工程とし、Geminiが必ずWebPを直接返すとは想定しない。公式資料の出典と確認範囲は[文書索引](00_index.md)に記載する。
+
+## 全体構成
+
+```mermaid
+flowchart LR
+    B[スマホブラウザ HTML Service] -->|google.script.run| G[GAS api]
+    G --> S[Sheets マスターと行動記録]
+    G --> D[Drive 採用WebP]
+    A[提供者の制作操作] --> M[Gemini 画像生成]
+    M --> O[Drive 元画像]
+    O --> W[提供者がWebP変換・内容確認]
+    W --> D
+```
+
+画面はGASの `doGet()` が返すHTML Service。画面からサーバーへの通信は非同期の `google.script.run` を使う。[Webアプリの公式説明](https://developers.google.com/apps-script/guides/web)、[HTML Serviceの通信](https://developers.google.com/apps-script/guides/html/communication)。
+
+初版は同じGAS内の画面とサーバーを使い、独立したRESTサーバーや別ホスティングを用意しない。画像生成は制作時の処理であり、ゲームの変更処理に含めない。
+
+## 実装ファイルの責務
+
+| ファイル案 | 責務 |
+|---|---|
+| Code.gs | doGet、公開関数api、操作名の許可リスト |
+| GameService.gs | 抽選・対戦・合成・状態変更の制御 |
+| Rules.gs | 勝敗、ポイント、レシピ正規化の副作用のない関数 |
+| Repository.gs | Sheets一括読込、行動追記、整合性検証 |
+| Assets.gs | 許可画像IDから採用WebPを取得 |
+| Admin.gs | 初期データ作成、マスター検証、画像生成・登録、バックアップ補助 |
+| Index.html | 5画面の骨組み |
+| Styles.html | スマホ優先のCSS |
+| Client.html | RPC、画面状態、結果モーダル、再送処理 |
+
+内部・管理関数は末尾 `_` を付け、画面から呼ぶ公開関数は `api` に集約する。末尾 `_` の関数は `google.script.run` から呼び出せない。ただし、これは公開範囲の設定や入力検証の代替ではない。[公式通信ガイド](https://developers.google.com/apps-script/guides/html/communication)。
+
+上記は `src/` 配下に作るファイル案で、現在は未作成。GASプロジェクトへの配置方式・ローカル検証環境は実装タスクで整備する。
+
+## Golden Pathと構成要素
+
+[要件のGolden Path](01_requirements.md)と同じ番号で対応付ける。
+
+| # | ステップ | 構成要素・API | 境界・保存先 | 失敗時の影響 |
+|---|---|---|---|---|
+| 1 | 起動 | Code / Client / Repository、bootstrap | Googleアクセス制御、Sheetsマスター・Players・Actions | 権限不足・不整合で起動または変更を停止 |
+| 2 | 仲間獲得 | GameService / Rules / Repository、drawCharacter | ScriptLock、Actionsの所有スナップショット | 保存できなければ演出しない |
+| 3 | 対戦・ポイント獲得 | GameService / Rules / Repository、playRound | 所有・習得・適性・手の検証、Actions | 結果未確定なら同一要求の再送で解決 |
+| 4 | 合成 | GameService / Rules / Repository、synthesize | Recipes、Actionsのポイント・習得 | 二重消費・二重解放を防止 |
+| 5 | S04使用 | Client / GameService / Rules、playRound | CharacterSkillsの既存適性、習得状態 | 適性と習得の混同を防止 |
+| 6 | 学習表示 | Client / Repository、getRelations | Players→Actions、Characters↔CharacterSkills↔Skills | 実データに一致しなければ学習要件未達 |
+| 7 | 再開 | Client / Repository、保留要求解決→bootstrap | sessionStorageとSheets最新状態 | 過去の再送結果で画面を巻き戻さない |
+
+画像取得はAssets / Driveを通る `getAsset`。画像失敗時は名前付き代替表示で続行する。Geminiは制作時だけ利用し、対戦・合成の実行経路には含めない。GAS・Sheets・認証が中核経路の依存先となる。
+
+## 通信操作と状態変更
+
+画面は `google.script.run` からサーバー関数 `api(request)` を呼び出す。REST APIとしては公開しない。完全なJSON契約は本書の[API契約](#api契約)を参照。
+
+| 操作名 | 目的 | 状態変更 |
+|---|---|---|
+| bootstrap | マスター・最新状態取得 | なし |
+| drawCharacter | 未所有仲間を1体獲得 | 所有追加 |
+| playRound | 1回のじゃんけん | ポイント加算 |
+| synthesize | 固定レシピで習得 | ポイント消費・習得追加 |
+| getRelations | 学習用の関係と最新記録取得 | なし |
+| getAsset | 採用画像1枚の取得 | なし |
+
+変更要求には一意の `requestId` と画面が読んだ `expectedVersion` を付ける。同じ要求を再送すると保存済みの結果を返し、二重に適用しない。別の操作で状態が進んでいたら更新競合として再読込を案内する。
+
+## API契約
+
+### 公開入口と共通形式
+
+`api(request)` を `google.script.run.withSuccessHandler(...).withFailureHandler(...).api(request)` で呼ぶ。通信順序に依存せず、画面側は変更を1件ずつ送る。JSONで表せる型のみを使用し、Dateオブジェクトではなく日時文字列を返す。
+
+変更要求例：
+
+```json
+{
+  "op": "playRound",
+  "requestId": "68bc9177-bae2-4b17-ae17-b2cabf5cdf72",
+  "expectedVersion": 2,
+  "payload": {
+    "characterId": "C01",
+    "skillId": "S01",
+    "hand": "rock"
+  }
+}
+```
+
+成功応答例（変更前ポイント2、相手がチョキの場合）：
+
+```json
+{
+  "ok": true,
+  "requestId": "68bc9177-bae2-4b17-ae17-b2cabf5cdf72",
+  "replayed": false,
+  "version": 3,
+  "data": {
+    "result": {
+      "characterId": "C01",
+      "skillId": "S01",
+      "playerHand": "rock",
+      "cpuHand": "scissors",
+      "outcome": "WIN",
+      "basePoints": 2,
+      "bonusPoints": 1,
+      "earnedPoints": 3
+    },
+    "state": {
+      "schemaVersion": 1,
+      "version": 3,
+      "points": 5,
+      "ownedCharacterIds": ["C01", "C02", "C03"],
+      "unlockedSkillIds": ["S01", "S02", "S03"]
+    }
+  }
+}
+```
+
+失敗応答例：
+
+```json
+{
+  "ok": false,
+  "requestId": "a4a45a39-92a0-4112-8a18-596a9553c9af",
+  "error": {
+    "code": "INSUFFICIENT_POINTS",
+    "message": "あと1ポイントためよう",
+    "retryable": false,
+    "details": {"required": 3, "current": 2}
+  }
+}
+```
+
+業務エラーも成功ハンドラーにこの形式で返す。GASやネットワークの例外は失敗ハンドラーで扱い、変更結果は未確定とする。読み取り応答はrequestId=null、replayed=false。versionは状態を含む読み取りと変更成功で返し、画像応答では省略する。
+
+### 操作別契約
+
+| op | payload | 成功時のdata | 主な検証 |
+|---|---|---|---|
+| bootstrap | `{}` | `{player, state, characters, skills, characterSkills, recipes, masterVersion, limits}` | 初期状態・全マスター・Actionsの整合性 |
+| drawCharacter | `{}` | `{result:{characterId, candidateCount}, state}` | 未所有候補がある |
+| playRound | `{characterId, skillId, hand}` | `{result:{characterId, skillId, playerHand, cpuHand, outcome, basePoints, bonusPoints, earnedPoints}, state}` | 所有、習得、適性、手の許可値 |
+| synthesize | `{ingredientSkillIds:["S01","S02"]}` | `{result:{recipeId, unlockedSkillId, spentPoints}, state}` | 配列長2、重複なし、固定レシピ、習得、未解放、残高 |
+| getRelations | `{}` | `{player, recentActions, characters, skills, characterSkills, ownedCharacterIds, unlockedSkillIds}` | 最新10件のみ。トークンや内部パスを除く |
+| getAsset | `{assetId:"A_C01"}` | `{assetId, version, mimeType, base64}` | マスターから参照するREADY画像のみ |
+
+bootstrapのplayerは `{playerId, displayName}`。charactersは `{characterId,name,assetId}`、skillsは `{skillId,name,effectCode,bonus,assetId}`、characterSkillsは `{characterId,skillId}`、recipesは `{recipeId,ingredientA,ingredientB,resultSkillId,cost}` の配列。limitsは `{maxActions:200,remainingActions:n}`。
+
+recentActionsは `{actionId,type,createdAt,result}` の配列で新しい順。payloadHashや入力の内部記録は返さない。getRelationsのversionは対応する状態のversion。画像ファイルが変わる場合はAssets.versionを増やす。
+
+playerIdはクライアントから受け取らず、初版サーバー内でP001と決める。未知のop、未知のキー、必要項目不足を拒否する。変更要求全体は4KB以下、IDは英数字・`_`・`-`の32文字以内、requestIdはUUID形式に限定する。
+
+## 保存・実行境界
+
+- 状態変更は `drawCharacter` / `playRound` / `synthesize` の3操作。画面は1件ずつ送信し、成功保存を確認してから結果を演出する。
+- 8シート、1行追記、ScriptLock、再送と状態復元の詳細は[データモデル](05_data_model.md)。Sheetsの複数表更新をDBトランザクションとみなさない。
+- 認可は提供者本人限定の公開設定を前提とする。公開APIに任意playerId・Drive fileId・シート名・URLを指定する機能を作らない。内部関数の末尾 `_` は認可・入力検証の代替ではない。
+- キャッシュは補助のみ。最新状態・重複判定の正本はSheetsとする。文字列はtextContent等で表示し、任意HTML・コードを実行しない。
+- GASの実行時設定はScript Properties。`env/` と `doppler.yaml` は既存の開発用ひな形で、GASへの同期は未実装。設定と秘密情報の置き場所は[データモデル](05_data_model.md)に従う。
+- ユーザー向けエラーは[エラー方針](06_error_policy.md)、配置・共有制限は[リリース手順](08_release_runbook.md)に従う。
+
+## 拡張時の変更箇所
+
+| 拡張 | 追加・変更が必要なこと | 初版との境界 |
+|---|---|---|
+| キャラ・固定スキル追加 | マスター、画像、適性、受入条件の更新 | 効果コードが既存ならロジック追加は不要 |
+| 新しい効果 | Rulesの許可コード・表示・試験を追加 | AIが任意コードや効果値を決めない |
+| 3素材以上の合成 | RecipeIngredientsと数量、在庫消費を設計 | 初版の2素材・非消費とは別仕様 |
+| 個別プレイヤー | 認証、主体からのID解決、所有権検証、記録分離 | 固定P001を置き換える |
+| 教室での同時利用 | 負荷測定、運用管理、保存先選定 | ScriptLockの全体直列化がボトルネックになる |
+| DBへの移行 | PlayerCharacters、PlayerSkills、対戦表、取引・一意制約 | JSONスナップショットを正規化した現在状態へ移す |
+| 遊び中の画像生成 | 非同期ジョブ、上限、確認、再試行、待機画像 | 合成成功と画像完成を別状態で管理 |
+| 一般公開 | 認証、監視、レート制限、年齢に応じた運用、問い合わせ・削除 | 公開設定の変更だけでは足りない |
+
+## 開発ガイドとの関係
+
+共通作業方針は[AGENTS.md](../AGENTS.md)、Claude Code固有の手順は[CLAUDE.md](../CLAUDE.md)を参照する。構造・IFの変更は[MVP実装計画](tasks/02_backlog/mvp-implementation.md)等でScopeと検証方法を決め、確定した判断を本書または `docs/adr/` に残す。
