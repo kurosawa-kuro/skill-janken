@@ -235,3 +235,58 @@ test("failed initialization does not select an incomplete book; synthesis-era da
   );
   assert.equal(legacy.props.get("JANKEN_SPREADSHEET_ID"), "test-sheet");
 });
+
+test("setup refuses success when its connection property was not saved", () => {
+  const g = createSheetGas();
+  g.props.delete("JANKEN_SPREADSHEET_ID");
+  const properties = g.context.PropertiesService.getScriptProperties;
+  g.context.PropertiesService.getScriptProperties = () => ({
+    ...properties(),
+    setProperty() {},
+  });
+  assert.throws(() => g.context.setupLab_(), corrupt);
+  assert.equal(g.props.has("JANKEN_SPREADSHEET_ID"), false);
+  assert.equal(g.lock.held, false);
+});
+
+test("activation verifies the previous pointer before switching and never reports an unsaved switch as success", () => {
+  for (const failedKey of [
+    "JANKEN_PREVIOUS_SPREADSHEET_ID",
+    "JANKEN_SPREADSHEET_ID",
+  ]) {
+    const g = createSheetGas(),
+      next = createSheetGas();
+    next.book.getId = () => "next-sheet";
+    g.context.SpreadsheetApp.openById = (id) =>
+      id === "next-sheet" ? next.book : g.book;
+    let backups = 0;
+    g.context.verifiedDatabaseCopy_ = (sourceId) => {
+      assert.equal(sourceId, "test-sheet");
+      assert.equal(g.lock.held, true);
+      backups++;
+      return { spreadsheetId: "backup-sheet" };
+    };
+    const properties = g.context.PropertiesService.getScriptProperties;
+    const writes = [];
+    g.context.PropertiesService.getScriptProperties = () => ({
+      ...properties(),
+      setProperty(key, value) {
+        writes.push(key);
+        if (key !== failedKey) g.props.set(key, value);
+      },
+    });
+    assert.throws(
+      () => g.context.activateLab_("next-sheet", "test-sheet"),
+      corrupt,
+    );
+    assert.equal(backups, 1);
+    assert.equal(g.props.get("JANKEN_SPREADSHEET_ID"), "test-sheet");
+    assert.deepEqual(
+      writes,
+      failedKey === "JANKEN_PREVIOUS_SPREADSHEET_ID"
+        ? [failedKey]
+        : ["JANKEN_PREVIOUS_SPREADSHEET_ID", failedKey],
+    );
+    assert.equal(g.lock.held, false);
+  }
+});

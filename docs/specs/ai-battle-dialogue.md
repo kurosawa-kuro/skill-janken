@@ -48,7 +48,7 @@
 | DialogueDrafts | 9枠の下書き。slotKey、revision、textsJson、generationRequestId、updatedAt。生成結果の保存時も版競合を検出する |
 | DialoguePublication | singleton 1行。id、version、catalogJson、updatedAt。確認済み集全体を1つのJSONとして保存する |
 
-採用集はUTF-8で8KiB以下。ScriptLock内で公開版の比較、全件検証、1行setValues→flush→再読込照合を行う。読取りも完全な公開版だけを採用し、部分書込・不整合なら全体を定型文へ戻す。自動修復や下書きの自動採用はしない。管理操作はActions・ポイント・ゲームstate.versionを変更しない。
+採用集はUTF-8で8KiB以下。ScriptLock内で公開版の比較、全件検証、1行setValues→flush→再読込照合を行う。読取りも完全な公開版だけを採用し、部分書込・不整合なら全体を定型文へ戻す。自動修復や下書きの自動採用はしない。管理操作はActions・ポイント・ゲームstate.versionを変更しない。初期化・公開・生成予約はロック取得後にも現在の接続先を照合する。生成中に接続先が変わった場合はDATASET_MISMATCHで旧DBへの結果保存を止め、予約をfailedとして残す。消費済み日次回数と429等の停止状態は保持し、同じ要求を再生成しない。保存済み採用集の構造違反はDATA_INTEGRITY_ERRORとして管理画面へ返し、ゲームは定型文を維持する。
 
 バックアップ・復元・ハッシュ検証は追加2表も対象に拡張する。旧8表だけのバックアップも読取り照合できる。物理2へ移行・切替したブックに管理表がなければ定型文で遊べる。管理表の不具合とゲームActionsの破損を区別し、後者は従来どおり停止する。
 

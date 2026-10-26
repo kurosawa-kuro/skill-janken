@@ -40,6 +40,12 @@ function initializeGameBook_(book) {
     storageSchemaVersion: 2,
   };
 }
+function setConnectionProperty_(props, key, value) {
+  requireWriteLock_();
+  props.setProperty(key, value);
+  if (props.getProperty(key) !== value)
+    throw new AppError_("DATA_INTEGRITY_ERROR");
+}
 function setupLab_() {
   return withLock_(() => {
     const props = PropertiesService.getScriptProperties();
@@ -54,7 +60,7 @@ function setupLab_() {
     }
     const book = SpreadsheetApp.create("skill-janken-lab-db-schema2");
     initializeGameBook_(book);
-    props.setProperty("JANKEN_SPREADSHEET_ID", book.getId());
+    setConnectionProperty_(props, "JANKEN_SPREADSHEET_ID", book.getId());
     return { created: true, tables: 6, storageSchemaVersion: 2 };
   });
 }
@@ -79,8 +85,8 @@ function activateLab_(nextId, expectedId) {
       throw new AppError_("DATA_INTEGRITY_ERROR");
     readDialogue_(next);
     const backup = verifiedDatabaseCopy_(expectedId, "before-schema2");
-    props.setProperty("JANKEN_PREVIOUS_SPREADSHEET_ID", expectedId);
-    props.setProperty("JANKEN_SPREADSHEET_ID", nextId);
+    setConnectionProperty_(props, "JANKEN_PREVIOUS_SPREADSHEET_ID", expectedId);
+    setConnectionProperty_(props, "JANKEN_SPREADSHEET_ID", nextId);
     return {
       masterVersion: 2,
       storageSchemaVersion: 2,

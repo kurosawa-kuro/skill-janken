@@ -119,7 +119,12 @@ function readDialogue_(book) {
   const pub = raw.DialoguePublication;
   if (pub.length !== 2 || pub[1][0] !== "CURRENT" || !isUtcDate_(pub[1][3]))
     throw new AppError_("DATA_INTEGRITY_ERROR");
-  const catalog = validateCatalog_(parseCell_(pub[1][2]));
+  let catalog;
+  try {
+    catalog = validateCatalog_(parseCell_(pub[1][2]));
+  } catch (_) {
+    throw new AppError_("DATA_INTEGRITY_ERROR");
+  }
   if (pub[1][1] !== catalog.version)
     throw new AppError_("DATA_INTEGRITY_ERROR");
   return { initialized: true, drafts, catalog };
@@ -167,8 +172,18 @@ function initializeDialogue_(book) {
   }
   return readDialogue_(book);
 }
+function requireCurrentDialogueBook_(book) {
+  requireWriteLock_();
+  if (
+    PropertiesService.getScriptProperties().getProperty(
+      "JANKEN_SPREADSHEET_ID",
+    ) !== book.getId()
+  )
+    throw new AppError_("DATASET_MISMATCH");
+}
 function publishDialogue_(book, p) {
   return withLock_(() => {
+    requireCurrentDialogueBook_(book);
     const current = readDialogue_(book),
       draft = current.drafts.find((d) => d.slotKey === p.slotKey);
     if (
@@ -250,6 +265,7 @@ function generateDialogueDraft_(book, p) {
     },
     hash = payloadHash_(input);
   const reservation = withLock_(() => {
+    requireCurrentDialogueBook_(book);
     const existing = props.getProperty(key);
     if (existing) {
       const job = parseCell_(existing);
@@ -306,6 +322,12 @@ function generateDialogueDraft_(book, p) {
           ...budget,
           stopped: true,
         });
+    }
+    // An external request may finish after the operator switches databases.
+    // Keep the consumed quota and reservation, but never write to the retired book.
+    if (props.getProperty("JANKEN_SPREADSHEET_ID") !== book.getId()) {
+      verifiedProperty_(props, key, { ...job, status: "failed" });
+      throw new AppError_("DATASET_MISMATCH");
     }
     const current = readDialogue_(book),
       draft = current.drafts.find((d) => d.slotKey === p.slotKey);

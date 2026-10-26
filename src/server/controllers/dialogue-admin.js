@@ -51,7 +51,10 @@ function adminApi(request) {
       request.op === "list"
         ? readDialogue_(book)
         : request.op === "initialize"
-          ? withLock_(() => initializeDialogue_(book))
+          ? withLock_(() => {
+              requireCurrentDialogueBook_(book);
+              return initializeDialogue_(book);
+            })
           : request.op === "generate"
             ? generateDialogueDraft_(book, p)
             : publishDialogue_(book, p);

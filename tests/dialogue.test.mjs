@@ -269,3 +269,93 @@ test("provider 5xx, invalid JSON, safety block and unavailable key never change 
   assert.equal(call("generate", gen(1)).ok, false);
   assert.equal(g.call({ op: "bootstrap", payload: {} }).ok, true);
 });
+
+test("admin writes recheck the active database after obtaining the lock", () => {
+  for (const op of ["initialize", "publish", "generate"]) {
+    const { g, call, fetches } = setup();
+    if (op === "publish") call("generate", gen());
+    if (op === "initialize") {
+      g.sheets.delete("DialogueDrafts");
+      g.sheets.delete("DialoguePublication");
+    }
+    const before = JSON.stringify([...g.sheets.values()].map((s) => s.rows));
+    const count = fetches();
+    const control = [...g.props].filter(([key]) =>
+      key.startsWith("JANKEN_AI_"),
+    );
+    const getLock = g.context.LockService.getScriptLock;
+    g.context.LockService.getScriptLock = () => {
+      const lock = getLock(),
+        acquire = lock.tryLock;
+      lock.tryLock = (timeout) => {
+        const acquired = acquire(timeout);
+        g.props.set("JANKEN_SPREADSHEET_ID", "next-sheet");
+        return acquired;
+      };
+      return lock;
+    };
+    const payload =
+      op === "initialize"
+        ? { datasetId: DATASET }
+        : op === "publish"
+          ? pub()
+          : gen();
+    assert.equal(call(op, payload).error.code, "DATASET_MISMATCH");
+    assert.equal(
+      JSON.stringify([...g.sheets.values()].map((s) => s.rows)),
+      before,
+    );
+    assert.equal(fetches(), count);
+    assert.deepEqual(
+      [...g.props].filter(([key]) => key.startsWith("JANKEN_AI_")),
+      control,
+    );
+    assert.equal(g.lock.held, false);
+  }
+});
+
+test("generation completing after a database switch cannot save to the old book or refund its quota", () => {
+  for (const stop of [false, true]) {
+    const { g, call, fetches } = setup();
+    const p = gen();
+    const before = JSON.stringify([...g.sheets.values()].map((s) => s.rows));
+    const fetch = g.context.UrlFetchApp.fetch;
+    g.context.UrlFetchApp.fetch = (...args) => {
+      const response = fetch(...args);
+      g.props.set("JANKEN_SPREADSHEET_ID", "next-sheet");
+      return stop ? { getResponseCode: () => 429 } : response;
+    };
+    assert.equal(call("generate", p).error.code, "DATASET_MISMATCH");
+    assert.equal(
+      JSON.stringify([...g.sheets.values()].map((s) => s.rows)),
+      before,
+    );
+    assert.equal(
+      JSON.parse(g.props.get("JANKEN_AI_JOB_" + p.requestId)).status,
+      "failed",
+    );
+    const budget = JSON.parse(g.props.get("JANKEN_AI_DAILY"));
+    assert.equal(budget.count, 1);
+    assert.equal(budget.stopped, stop);
+    assert.equal(fetches(), 1);
+    g.props.set("JANKEN_SPREADSHEET_ID", "test-sheet");
+    assert.equal(call("generate", p).data.status, "failed");
+    assert.equal(fetches(), 1);
+    assert.equal(g.lock.held, false);
+  }
+});
+
+test("a malformed stored catalog is a data integrity error, while the game keeps its fallback", () => {
+  const { g, call } = setup();
+  for (const catalog of [
+    { version: 0, entries: [], extra: true },
+    { version: 1, entries: [{ characterId: "C01", outcome: "WIN" }] },
+  ]) {
+    g.sheets.get("DialoguePublication").rows[1][2] = JSON.stringify(catalog);
+    assert.equal(call("list").error.code, "DATA_INTEGRITY_ERROR");
+    assert.deepEqual(
+      g.call({ op: "bootstrap", payload: {} }).data.dialogueCatalog,
+      { version: 0, entries: [] },
+    );
+  }
+});
